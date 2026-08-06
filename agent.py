@@ -57,7 +57,7 @@ class UnlimitedOCRAgent:
         print(f"Procesando imagen: {image_path}")
         try:
             with torch.inference_mode():
-                result = self.model.infer(
+                self.model.infer(
                     self.tokenizer,
                     prompt='<image>document parsing.',
                     image_file=image_path,
@@ -65,13 +65,15 @@ class UnlimitedOCRAgent:
                     base_size=1024,
                     image_size=640,
                     crop_mode=True,
-                    max_length=4096,
-                    eval_mode=True
+                    max_length=32768,
+                    no_repeat_ngram_size=35,
+                    ngram_window=128,
+                    save_results=True
                 )
         except torch.cuda.OutOfMemoryError:
             print("Memoria VRAM agotada en GPU. Reintentando con configuración ligera...")
             with torch.inference_mode():
-                result = self.model.infer(
+                self.model.infer(
                     self.tokenizer,
                     prompt='<image>document parsing.',
                     image_file=image_path,
@@ -79,12 +81,11 @@ class UnlimitedOCRAgent:
                     base_size=512,
                     image_size=384,
                     crop_mode=False,
-                    max_length=4096,
-                    eval_mode=True
+                    max_length=32768,
+                    no_repeat_ngram_size=35,
+                    ngram_window=128,
+                    save_results=True
                 )
-
-        if isinstance(result, str):
-            return result
 
         result_file = os.path.join(self.output_dir, "result.md")
         if os.path.exists(result_file):
@@ -96,22 +97,34 @@ class UnlimitedOCRAgent:
         """Convierte páginas del PDF a imágenes y extrae su texto."""
         print(f"Procesando documento PDF: {pdf_path}")
         doc = fitz.open(pdf_path)
-        combined_markdown = []
-        
         pdf_img_dir = os.path.join(self.output_dir, "pdf_pages")
         os.makedirs(pdf_img_dir, exist_ok=True)
-        
-        total_pages = len(doc)
+        image_paths = []
         for i, page in enumerate(doc):
-            pix = page.get_pixmap(dpi=150)
+            pix = page.get_pixmap(dpi=300)
             img_path = os.path.join(pdf_img_dir, f"page_{i+1}.png")
             pix.save(img_path)
-            
-            print(f"  ── Procesando Página {i+1}/{total_pages}...")
-            page_text = self.extract_from_image(img_path)
-            combined_markdown.append(f"\n<!-- Página {i+1} -->\n{page_text}")
-            
-        return "\n".join(combined_markdown)
+            image_paths.append(img_path)
+        doc.close()
+
+        print(f"Procesando {len(image_paths)} páginas con infer_multi...")
+        self.model.infer_multi(
+            self.tokenizer,
+            prompt='<image>Multi page parsing.',
+            image_files=image_paths,
+            output_path=self.output_dir,
+            image_size=1024,
+            max_length=32768,
+            no_repeat_ngram_size=35,
+            ngram_window=1024,
+            save_results=True
+        )
+
+        result_file = os.path.join(self.output_dir, "result.md")
+        if os.path.exists(result_file):
+            with open(result_file, "r", encoding="utf-8") as f:
+                return f.read()
+        return ""
 
     def ask_lmstudio(self, document_text: str, question: str) -> str:
         """Envía el contenido del documento extraído a LM Studio para análisis."""

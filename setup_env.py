@@ -14,21 +14,21 @@ def is_nvidia_gpu_available():
     return False
 
 def install_environment():
-    print("🔍 Detectando hardware del sistema...")
+    print("Detectando hardware del sistema...")
     gpu_found = is_nvidia_gpu_available()
     
     if gpu_found:
-        print("⚡ ¡GPU NVIDIA detectada! Instalando PyTorch con aceleración CUDA 12.4...")
+        print("GPU NVIDIA detectada. Instalando PyTorch con aceleración CUDA 12.4...")
         cmd = ["uv", "pip", "install", "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124", "-p", ".venv"]
     else:
-        print("💻 GPU NVIDIA no detectada. Instalando versión de PyTorch para CPU...")
+        print("GPU NVIDIA no detectada. Instalando versión de PyTorch para CPU...")
         cmd = ["uv", "pip", "install", "-r", "requirements.txt", "-p", ".venv"]
         
     try:
         subprocess.run(cmd, check=True)
-        print("✅ Entorno de dependencias instalado correctamente.")
+        print("Entorno de dependencias instalado correctamente.")
     except Exception as e:
-        print(f"❌ Error al instalar dependencias: {e}")
+        print(f"Error al instalar dependencias: {e}")
 
 if __name__ == "__main__":
     install_environment()

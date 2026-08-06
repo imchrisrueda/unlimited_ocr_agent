@@ -22,7 +22,7 @@ class UnlimitedOCRAgent:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
         
-        print("🧠 Cargando modelo de visión Unlimited-OCR...")
+        print("Cargando modelo de visión Unlimited-OCR...")
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name, 
             trust_remote_code=True
@@ -33,11 +33,11 @@ class UnlimitedOCRAgent:
             self.device = "cuda"
             self.dtype = torch.bfloat16
             gpu_name = torch.cuda.get_device_name(0)
-            print(f"⚡ GPU Activada: {gpu_name} (Aceleración CUDA activada)")
+            print(f"GPU activada: {gpu_name} (aceleración CUDA activada)")
         else:
             self.device = "cpu"
             self.dtype = torch.float32
-            print("💻 GPU no detectada en PyTorch. Ejecutando en modo CPU...")
+            print("GPU no detectada en PyTorch. Ejecutando en modo CPU...")
         
         self.model = AutoModel.from_pretrained(
             self.model_name, 
@@ -54,30 +54,37 @@ class UnlimitedOCRAgent:
 
     def extract_from_image(self, image_path: str) -> str:
         """Extrae el contenido de una imagen usando Unlimited-OCR."""
-        print(f"📄 Procesando imagen: {image_path}")
+        print(f"Procesando imagen: {image_path}")
         try:
             with torch.inference_mode():
-                self.model.infer(
+                result = self.model.infer(
                     self.tokenizer,
                     prompt='<image>document parsing.',
                     image_file=image_path,
                     output_path=self.output_dir,
                     base_size=1024,
                     image_size=640,
-                    crop_mode=True
+                    crop_mode=True,
+                    max_length=4096,
+                    eval_mode=True
                 )
         except torch.cuda.OutOfMemoryError:
-            print("⚠️ Memoria VRAM agotada en GPU. Reintentando con configuración ligera...")
+            print("Memoria VRAM agotada en GPU. Reintentando con configuración ligera...")
             with torch.inference_mode():
-                self.model.infer(
+                result = self.model.infer(
                     self.tokenizer,
                     prompt='<image>document parsing.',
                     image_file=image_path,
                     output_path=self.output_dir,
                     base_size=512,
                     image_size=384,
-                    crop_mode=False
+                    crop_mode=False,
+                    max_length=4096,
+                    eval_mode=True
                 )
+
+        if isinstance(result, str):
+            return result
 
         result_file = os.path.join(self.output_dir, "result.md")
         if os.path.exists(result_file):
@@ -87,7 +94,7 @@ class UnlimitedOCRAgent:
 
     def extract_from_pdf(self, pdf_path: str) -> str:
         """Convierte páginas del PDF a imágenes y extrae su texto."""
-        print(f"📚 Procesando documento PDF: {pdf_path}")
+        print(f"Procesando documento PDF: {pdf_path}")
         doc = fitz.open(pdf_path)
         combined_markdown = []
         
@@ -108,7 +115,7 @@ class UnlimitedOCRAgent:
 
     def ask_lmstudio(self, document_text: str, question: str) -> str:
         """Envía el contenido del documento extraído a LM Studio para análisis."""
-        print("💬 Consultando al modelo en LM Studio...")
+        print("Consultando al modelo en LM Studio...")
         system_prompt = (
             "Eres un agente IA especializado en analizar y digitalizar documentos procesados por OCR. "
             "Responde de forma precisa, limpia y bien estructurada en formato Markdown."
@@ -131,13 +138,13 @@ class UnlimitedOCRAgent:
             )
             return response.choices[0].message.content
         except Exception as e:
-            return f"❌ Error al conectar con LM Studio: {e}\nAsegúrate de haber activado el 'Local Server' en LM Studio."
+            return f"Error al conectar con LM Studio: {e}\nAsegúrate de haber activado el 'Local Server' en LM Studio."
 
     def export_to_markdown(self, text: str, output_path: str) -> str:
         """Guarda el contenido de texto/markdown en un archivo .md"""
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(text)
-        print(f"✅ Documento digitalizado guardado en Markdown: {output_path}")
+        print(f"Documento digitalizado guardado en Markdown: {output_path}")
         return output_path
 
     def export_to_pdf(self, text: str, output_path: str) -> str:
@@ -147,9 +154,10 @@ class UnlimitedOCRAgent:
         margin = 40
         rect = fitz.Rect(margin, margin, page_width - margin, page_height - margin)
         
+        html_text = text.replace("\n", "<br/>")
         html_content = f"""
         <div style="font-family: Helvetica, Arial, sans-serif; font-size: 11pt; line-height: 1.5; color: #222;">
-            {text.replace('\n', '<br/>')}
+            {html_text}
         </div>
         """
         
@@ -161,7 +169,7 @@ class UnlimitedOCRAgent:
             
         doc.save(output_path)
         doc.close()
-        print(f"✅ Documento digitalizado guardado en PDF: {output_path}")
+        print(f"Documento digitalizado guardado en PDF: {output_path}")
         return output_path
 
 def main():
@@ -190,7 +198,7 @@ def main():
     else:
         final_result = agent.ask_lmstudio(raw_ocr_text, args.prompt)
 
-    print("\n🤖 RESPUESTA DEL AGENTE:")
+    print("\nRESPUESTA DEL AGENTE:")
     print(final_result)
 
     # Exportación si se solicitaron flags

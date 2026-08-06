@@ -1,0 +1,12 @@
+torch
+torchvision
+transformers>=4.40.0,<4.47.0
+openai
+Pillow
+pymupdf
+einops
+addict
+easydict
+matplotlib
+psutil
+requests

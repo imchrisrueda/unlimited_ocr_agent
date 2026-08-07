@@ -101,4 +101,22 @@ python agent.py documento.pdf "¿Cuántas filas existen en el experimento?" --lm
 
 No se debe usar `local-model` salvo que ese sea realmente el identificador anunciado por `/v1/models`.
 
+### Razonamiento y documentos extensos
+
+Puedes activar razonamiento cuando la tarea requiera comparar, inferir o elaborar un resumen analítico:
+
+```powershell
+python agent.py documento.pdf "Realiza un resumen analítico con conclusiones y evidencias" --reasoning-effort medium --max-tokens 4096 --export-md resumen.md
+```
+
+Los niveles disponibles son `none`, `low`, `medium` y `high`. `--max-tokens` limita la respuesta generada; no aumenta la ventana de contexto del modelo.
+
+Para documentos que no caben cómodamente en una sola petición, activa el procesamiento por fragmentos:
+
+```powershell
+python agent.py documento.pdf "Realiza un resumen analítico global" --reasoning-effort medium --max-tokens 2048 --chunk-size 12000 --chunk-overlap 500 --export-md resumen.md
+```
+
+El agente analiza cada fragmento y realiza una última llamada de síntesis. `--chunk-size` y `--chunk-overlap` se expresan en caracteres. Este modo aumenta el tiempo y el número de llamadas, pero evita depender de una única ventana de contexto para documentos extensos.
+
 Para consultas posteriores a OCR, el agente envía `reasoning_effort="none"` por defecto. Esto evita que modelos como Gemma consuman todo el límite de salida en `reasoning_content` y devuelvan `content` vacío. Si LM Studio devuelve una respuesta sin contenido, el terminal muestra una ayuda indicando esta causa y las alternativas: usar un modelo no razonador o aumentar el límite de tokens.

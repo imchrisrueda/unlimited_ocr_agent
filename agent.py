@@ -155,7 +155,13 @@ class UnlimitedOCRAgent:
         print(f"Modelo seleccionado en LM Studio: {self.lm_model}")
         return self.lm_model
 
-    def ask_lmstudio(self, document_text: str, question: str) -> str:
+    def ask_lmstudio(
+        self,
+        document_text: str,
+        question: str,
+        reasoning_effort: str = "none",
+        max_tokens: int = 2048,
+    ) -> str:
         """Envía el contenido del documento extraído a LM Studio para análisis."""
         print("Consultando al modelo en LM Studio...")
         system_prompt = (
@@ -177,7 +183,8 @@ class UnlimitedOCRAgent:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.2,
-                reasoning_effort="none"
+                reasoning_effort=reasoning_effort,
+                max_tokens=max_tokens,
             )
             content = response.choices[0].message.content or ""
             if not content.strip():
@@ -190,6 +197,53 @@ class UnlimitedOCRAgent:
             return content
         except Exception as e:
             return f"Error al conectar con LM Studio: {e}\nAsegúrate de haber activado el 'Local Server' en LM Studio."
+
+    def ask_lmstudio_chunked(
+        self,
+        document_text: str,
+        question: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        reasoning_effort: str,
+        max_tokens: int,
+    ) -> str:
+        """Resume documentos largos en fragmentos y sintetiza el resultado."""
+        if chunk_overlap >= chunk_size:
+            raise ValueError("chunk_overlap debe ser menor que chunk_size")
+
+        chunks = []
+        start = 0
+        while start < len(document_text):
+            end = min(start + chunk_size, len(document_text))
+            chunks.append(document_text[start:end])
+            if end == len(document_text):
+                break
+            start = end - chunk_overlap
+
+        partials = []
+        for index, chunk in enumerate(chunks, start=1):
+            print(f"Analizando fragmento {index}/{len(chunks)}...")
+            partial = self.ask_lmstudio(
+                chunk,
+                "Analiza únicamente este fragmento y extrae los datos relevantes para la tarea. "
+                + question,
+                reasoning_effort=reasoning_effort,
+                max_tokens=max_tokens,
+            )
+            if partial.strip():
+                partials.append(f"### Fragmento {index}\n{partial}")
+
+        if not partials:
+            return ""
+
+        print("Sintetizando los resultados parciales...")
+        return self.ask_lmstudio(
+            "\n\n".join(partials),
+            "Combina los análisis parciales en una respuesta única, coherente y fiel al documento. "
+            + question,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+        )
 
     def export_to_markdown(self, text: str, output_path: str) -> str:
         """Guarda el contenido de texto/markdown en un archivo .md"""
@@ -226,6 +280,10 @@ class UnlimitedOCRAgent:
 def main():
     parser = argparse.ArgumentParser(description="Agente IA: Unlimited-OCR + LM Studio")
     parser.add_argument("file_path", help="Ruta de la imagen o archivo PDF a digitalizar")
+    parser.add_argument("--reasoning-effort", choices=("none", "low", "medium", "high"), default="none", help="Nivel de razonamiento solicitado a LM Studio")
+    parser.add_argument("--max-tokens", type=int, default=2048, help="Máximo de tokens generados por llamada a LM Studio")
+    parser.add_argument("--chunk-size", type=int, default=0, help="Tamaño en caracteres para resumir documentos largos por fragmentos; 0 desactiva el modo fragmentado")
+    parser.add_argument("--chunk-overlap", type=int, default=500, help="Solapamiento entre fragmentos en caracteres")
     parser.add_argument("--lm-model", help="Identificador del modelo de texto de LM Studio; si se omite se detecta automáticamente")
     parser.add_argument("--instruction-file", help="Archivo Markdown o texto con la instrucción para LM Studio")
     parser.add_argument("prompt", nargs="?", default="Digitaliza este documento manteniendo su estructura en Markdown limpio.", help="Instrucción o pregunta para el agente")
@@ -257,8 +315,22 @@ def main():
 
     if args.raw:
         final_result = raw_ocr_text
+    elif args.chunk_size > 0 and len(raw_ocr_text) > args.chunk_size:
+        final_result = agent.ask_lmstudio_chunked(
+            raw_ocr_text,
+            instruction,
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+            reasoning_effort=args.reasoning_effort,
+            max_tokens=args.max_tokens,
+        )
     else:
-        final_result = agent.ask_lmstudio(raw_ocr_text, instruction)
+        final_result = agent.ask_lmstudio(
+            raw_ocr_text,
+            instruction,
+            reasoning_effort=args.reasoning_effort,
+            max_tokens=args.max_tokens,
+        )
 
     print("\nRESPUESTA DEL AGENTE:")
     print(final_result)

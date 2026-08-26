@@ -60,7 +60,8 @@ También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en u
 
 ## Estructura
 
-- `agent.py`: procesamiento OCR, integración con LM Studio y exportación.
+- `agent.py`: wrapper y entrypoint retrocompatible.
+- `src/fieldnotes/`: código refactorizado por fases (config, ingest, ocr, vlm, pipeline, export, cli).
 - `setup_env.py`: detección de hardware e instalación de PyTorch.
 - `requirements.txt`: dependencias Python.
 - `26-05-06.pdf`: documento de prueba incluido en el repositorio.

@@ -3,7 +3,7 @@
   "project": {
     "name": "unlimited_ocr_agent",
     "profile": "software",
-    "phase": "reviewing"
+    "phase": "executing"
   },
   "workflow": {
     "require_task": true,

@@ -2,12 +2,12 @@
 # Project status
 
 - Profile: software
-- Phase: executing
+- Phase: reviewing
 - Current milestone: none
-- Active tasks: 1
+- Active tasks: 0
 - Blocked tasks: 0
 - Awaiting review: 0
-- Accepted tasks: 1
+- Accepted tasks: 2
 - Structural graph: disabled
 - Semantic memory: disabled
 - Scientific graph: disabled

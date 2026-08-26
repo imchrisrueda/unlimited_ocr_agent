@@ -4,10 +4,10 @@
 - Profile: software
 - Phase: accepted
 - Current milestone: none
-- Active tasks: 1
+- Active tasks: 0
 - Blocked tasks: 0
 - Awaiting review: 0
-- Accepted tasks: 5
+- Accepted tasks: 6
 - Structural graph: disabled
 - Semantic memory: disabled
 - Scientific graph: disabled

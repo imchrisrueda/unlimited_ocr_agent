@@ -52,6 +52,14 @@ class LMStudioEmptyResponseError(LMStudioError):
     pass
 
 
+class LMStudioResponseTruncatedError(LMStudioResponseError):
+    """Error lanzado cuando la respuesta del modelo es truncada por límite de tokens (finish_reason='length')."""
+    def __init__(self, message: str, raw_response: Optional[str] = None):
+        sanitized_msg = sanitize_message(message, max_chars=1000)
+        super().__init__(sanitized_msg)
+        self.raw_response = sanitize_message(raw_response, max_chars=500) if raw_response is not None else None
+
+
 class StructuredOutputError(LMStudioError):
     """Excepción base para errores de estructuración y parseo de salidas de LM Studio."""
     def __init__(self, message: str, raw_response: Optional[str] = None):

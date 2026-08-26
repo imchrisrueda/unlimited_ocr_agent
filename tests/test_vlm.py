@@ -15,6 +15,7 @@ from src.fieldnotes.vlm.lmstudio import (
     LMStudioModelNotFoundError,
     LMStudioResponseError,
     LMStudioEmptyResponseError,
+    LMStudioResponseTruncatedError,
 )
 from openai import APIConnectionError, APIStatusError, NotFoundError
 
@@ -398,6 +399,50 @@ class TestLMStudioClientExecution(unittest.TestCase):
         self.assertEqual(fmt, {"type": "json_object"})
 
     @patch("openai.OpenAI")
+    def test_extra_body_forwarding_in_all_methods(self, mock_openai):
+        from pydantic import BaseModel
+
+        class SimpleModel(BaseModel):
+            title: str
+
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"title": "test"}'))]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        client = LMStudioClient(
+            base_url="http://localhost:1234/v1",
+            api_key="lm-studio",
+            vision_model="vision_qwen_9b",
+            text_model="text_model_1",
+            validate_model=False,
+        )
+
+        sample_img = Path(self.test_dir) / "sample_eb.png"
+        sample_img.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRtestdata")
+
+        eb = {"chat_template_kwargs": {"enable_thinking": False}, "enable_thinking": False}
+
+        # 1. ask_text
+        client.ask_text(prompt="test", extra_body=eb)
+        self.assertEqual(mock_client.chat.completions.create.call_args.kwargs["extra_body"], eb)
+
+        # 2. ask_vision
+        client.ask_vision(image_path=sample_img, prompt="test vision", extra_body=eb)
+        self.assertEqual(mock_client.chat.completions.create.call_args.kwargs["extra_body"], eb)
+
+        # 3. ask_text_structured
+        res_t = client.ask_text_structured(prompt="test structured", schema=SimpleModel, extra_body=eb)
+        self.assertEqual(res_t.title, "test")
+        self.assertEqual(mock_client.chat.completions.create.call_args.kwargs["extra_body"], eb)
+
+        # 4. ask_vision_structured
+        res_v = client.ask_vision_structured(image_path=sample_img, prompt="test v structured", schema=SimpleModel, extra_body=eb)
+        self.assertEqual(res_v.title, "test")
+        self.assertEqual(mock_client.chat.completions.create.call_args.kwargs["extra_body"], eb)
+
+    @patch("openai.OpenAI")
     def test_empty_content_raises_empty_response_error(self, mock_openai):
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
@@ -414,6 +459,30 @@ class TestLMStudioClientExecution(unittest.TestCase):
 
         with self.assertRaises(LMStudioEmptyResponseError):
             client.ask_text(prompt="test empty")
+
+    @patch("openai.OpenAI")
+    def test_truncated_response_raises_response_truncated_error(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_choice = MagicMock()
+        mock_choice.message = MagicMock(content='{"partial": "json')
+        mock_choice.finish_reason = "length"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        client = LMStudioClient(
+            base_url="http://localhost:1234/v1",
+            api_key="lm-studio",
+            text_model="text_model_1",
+            validate_model=False,
+        )
+
+        with self.assertRaises(LMStudioResponseTruncatedError) as ctx:
+            client.ask_text(prompt="test truncated", max_tokens=8192)
+
+        self.assertIn("finish_reason='length'", str(ctx.exception))
+        self.assertIn("8192", str(ctx.exception))
 
     @patch("openai.OpenAI")
     def test_sdk_connection_error_chained_and_redacted(self, mock_openai):

@@ -1,7 +1,21 @@
 from .evidence import EvidenceValue
 from .warnings import ExtractionWarning, JsonValue
 from .document import BlockType, BlockIR, PageIR, DocumentIR
-from .estadillo import EstadilloHeader, EstadilloRow, EstadilloPage, EstadilloDocument
+from .estadillo import (
+    EstadilloHeader,
+    EstadilloPageHeader,
+    EstadilloDocHeader,
+    EstadilloDocumentHeader,
+    EstadilloRow,
+    EstadilloPage,
+    EstadilloDocument,
+)
+from .dto import (
+    EstadilloHeaderDTO,
+    EstadilloRowDTO,
+    EstadilloPageDTO,
+    dto_to_estadillo_page,
+)
 
 __all__ = [
     "EvidenceValue",
@@ -12,7 +26,14 @@ __all__ = [
     "PageIR",
     "DocumentIR",
     "EstadilloHeader",
+    "EstadilloPageHeader",
+    "EstadilloDocHeader",
+    "EstadilloDocumentHeader",
     "EstadilloRow",
     "EstadilloPage",
     "EstadilloDocument",
+    "EstadilloHeaderDTO",
+    "EstadilloRowDTO",
+    "EstadilloPageDTO",
+    "dto_to_estadillo_page",
 ]

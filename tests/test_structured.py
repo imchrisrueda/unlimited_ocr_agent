@@ -43,6 +43,20 @@ class TestStructuredSchemaGeneration(unittest.TestCase):
         after_schema = EstadilloPage.model_json_schema()
         self.assertEqual(original_schema, after_schema)
 
+    def test_estadillo_page_schema_enforces_required_nonnull_source_page_in_header(self):
+        """Verifica que el JSON Schema de EstadilloPage fuerce inequívocamente source_page como integer >= 1 no nulo."""
+        payload = generate_json_schema(EstadilloPage)
+        defs = payload["json_schema"]["schema"].get("$defs", {})
+        self.assertIn("EstadilloPageHeader", defs)
+        header_def = defs["EstadilloPageHeader"]
+
+        self.assertIn("source_page", header_def.get("required", []))
+        source_page_prop = header_def.get("properties", {}).get("source_page", {})
+        self.assertEqual(source_page_prop.get("type"), "integer")
+        self.assertEqual(source_page_prop.get("minimum"), 1)
+        self.assertNotIn("anyOf", source_page_prop)
+        self.assertNotIn("null", str(source_page_prop))
+
 
 class TestStructuredJSONParser(unittest.TestCase):
     def test_parse_plain_json(self):
@@ -136,6 +150,63 @@ class TestStructuredJSONParser(unittest.TestCase):
         bad_bool = '{"raw": "test", "source_page": 1, "uncertain": "false"}'
         with self.assertRaises(StructuredOutputValidationError):
             parse_structured_json(bad_bool, EvidenceValue[str])
+
+    def test_reject_header_with_null_source_page_observed_response(self):
+        """Verifica el rechazo estricto de la respuesta anómala observada en E2E donde header.source_page era null."""
+        observed_bad_json = (
+            '{\n'
+            '  "page_number": 1,\n'
+            '  "header": {\n'
+            '    "objetivo": {"raw": "Muestreo parcela", "source_page": 1, "uncertain": false},\n'
+            '    "fecha": {"raw": "2026-05-06", "source_page": 1, "uncertain": false},\n'
+            '    "asistentes": null,\n'
+            '    "equipamiento": null,\n'
+            '    "situacion_atmosferica": null,\n'
+            '    "especies_declaradas": null,\n'
+            '    "source_page": null\n'
+            '  },\n'
+            '  "rows": [],\n'
+            '  "additional_text": null,\n'
+            '  "warnings": []\n'
+            '}'
+        )
+        with self.assertRaises(StructuredOutputValidationError) as ctx:
+            parse_structured_json(observed_bad_json, EstadilloPage)
+        self.assertIn("EstadilloPage", str(ctx.exception))
+
+    def test_reject_header_missing_source_page(self):
+        """Verifica que omitir source_page en cabecera de página sea rechazado estrictamente."""
+        bad_json = (
+            '{\n'
+            '  "page_number": 1,\n'
+            '  "header": {\n'
+            '    "objetivo": {"raw": "Muestreo", "source_page": 1, "uncertain": false}\n'
+            '  },\n'
+            '  "rows": []\n'
+            '}'
+        )
+        with self.assertRaises(StructuredOutputValidationError):
+            parse_structured_json(bad_json, EstadilloPage)
+
+    def test_parse_header_with_valid_source_page_matching_page_number(self):
+        """Verifica el parseo exitoso de una cabecera de página con source_page entero válido."""
+        valid_json = (
+            '{\n'
+            '  "page_number": 1,\n'
+            '  "header": {\n'
+            '    "objetivo": {"raw": "Muestreo parcela", "source_page": 1, "uncertain": false},\n'
+            '    "fecha": {"raw": "2026-05-06", "source_page": 1, "uncertain": false},\n'
+            '    "source_page": 1\n'
+            '  },\n'
+            '  "rows": []\n'
+            '}'
+        )
+        page = parse_structured_json(valid_json, EstadilloPage)
+        self.assertIsInstance(page, EstadilloPage)
+        self.assertEqual(page.page_number, 1)
+        self.assertIsNotNone(page.header)
+        self.assertEqual(page.header.source_page, 1)
+        self.assertEqual(page.header.objetivo.raw, "Muestreo parcela")
 
 
 class TestStructuredExceptionsRedaction(unittest.TestCase):

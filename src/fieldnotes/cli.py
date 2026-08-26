@@ -13,6 +13,17 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Agente IA: Unlimited-OCR + LM Studio")
     parser.add_argument("file_path", help="Ruta de la imagen o archivo PDF a digitalizar")
     parser.add_argument(
+        "--profile",
+        choices=("default", "estadillo"),
+        default="default",
+        help="Perfil de dominio para procesamiento estructurado (p. ej. 'estadillo')",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        help="Directorio base para la salida estructurada canónica (por defecto ./output_ocr)",
+    )
+    parser.add_argument(
         "--reasoning-effort",
         choices=("none", "low", "medium", "high"),
         default="none",
@@ -129,6 +140,75 @@ def main(args=None):
         or legacy_env
     )
 
+    # Validaciones específicas de --profile estadillo ANTES de instanciar agente u OCR
+    if parsed_args.profile == "estadillo":
+        if parsed_args.raw:
+            parser.error("--raw no es compatible con --profile estadillo")
+        if parsed_args.ask_vision:
+            parser.error("--ask-vision no es compatible con --profile estadillo")
+        if parsed_args.chunk_size > 0:
+            parser.error("--chunk-size no es compatible con --profile estadillo")
+        if parsed_args.export_md:
+            parser.error(
+                "--export-md no es compatible con --profile estadillo; "
+                "la salida canónica se persiste automáticamente en <output>/<document_stem>/notebook.md"
+            )
+        if parsed_args.export_pdf:
+            parser.error("--export-pdf no es compatible con --profile estadillo")
+        if not vision_model:
+            parser.error(
+                "Para usar --profile estadillo debe especificarse un modelo de visión mediante "
+                "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
+            )
+
+        agent = UnlimitedOCRAgent(
+            vision_model=vision_model,
+            text_model=text_model,
+            lm_model=parsed_args.lm_model or legacy_env,
+            output_dir=parsed_args.output or "./output_ocr",
+            ocr_mode=parsed_args.ocr_mode,
+            worker_timeout=parsed_args.worker_timeout,
+        )
+        if not parsed_args.keep_intermediate:
+            import atexit
+
+            atexit.register(agent.cleanup)
+
+        custom_prompt = (
+            instruction
+            if parsed_args.instruction_file
+            or parsed_args.prompt
+            != "Digitaliza este documento manteniendo su estructura en Markdown limpio."
+            else None
+        )
+
+        effective_max_tokens = (
+            4096 if parsed_args.max_tokens == 2048 else parsed_args.max_tokens
+        )
+        final_result, doc_result = agent.process_estadillo(
+            file_path=parsed_args.file_path,
+            output_dir=parsed_args.output,
+            prompt=custom_prompt,
+            max_tokens=effective_max_tokens,
+            reasoning_effort=parsed_args.reasoning_effort,
+        )
+
+        total_rows = sum(len(p.rows) for p in doc_result.pages)
+        total_warnings = len(doc_result.warnings)
+        print(
+            f"\n[PERFIL ESTADILLO] Procesamiento completado: {total_rows} registros extraídos, "
+            f"{total_warnings} advertencias detectadas."
+        )
+
+        print("\nRESPUESTA DEL AGENTE:")
+        print(final_result)
+
+        if parsed_args.keep_intermediate:
+            print(f"Archivos intermedios conservados en: {agent.output_dir}")
+
+        return
+
+    # Modo default (retrocompatible)
     if parsed_args.ask_vision and not vision_model:
         parser.error(
             "Para usar --ask-vision debe especificarse un modelo de visión mediante "
@@ -139,6 +219,7 @@ def main(args=None):
         vision_model=vision_model,
         text_model=text_model,
         lm_model=parsed_args.lm_model or legacy_env,
+        output_dir=parsed_args.output or "./output_ocr",
         ocr_mode=parsed_args.ocr_mode,
         worker_timeout=parsed_args.worker_timeout,
     )

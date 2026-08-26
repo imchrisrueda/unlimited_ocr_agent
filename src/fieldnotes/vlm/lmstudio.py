@@ -24,6 +24,7 @@ from .errors import (
     LMStudioModelNotFoundError,
     LMStudioResponseError,
     LMStudioEmptyResponseError,
+    LMStudioResponseTruncatedError,
     StructuredOutputError,
     StructuredOutputParseError,
     StructuredOutputValidationError,
@@ -248,12 +249,19 @@ class LMStudioClient:
         """Ejecuta la llamada de chat completion con mapeo determinista de excepciones SDK."""
         try:
             response = self.client.chat.completions.create(**kwargs)
-            choice = response.choices[0].message
-            content = choice.content or ""
+            choice_obj = response.choices[0]
+            message = choice_obj.message
+            content = message.content or ""
             if not content.strip():
                 raise LMStudioEmptyResponseError(
                     "LM Studio devolvió una respuesta con contenido vacío. "
                     "El modelo puede haber consumido los tokens en razonamiento interno."
+                )
+            if getattr(choice_obj, "finish_reason", None) == "length":
+                raise LMStudioResponseTruncatedError(
+                    f"La respuesta de LM Studio fue truncada por límite de tokens (finish_reason='length', "
+                    f"max_tokens={kwargs.get('max_tokens')}). El contenido JSON está incompleto.",
+                    raw_response=content,
                 )
             return content
         except (APIConnectionError, APITimeoutError, TimeoutError, ConnectionError) as exc:
@@ -285,6 +293,7 @@ class LMStudioClient:
         max_tokens: int = 2048,
         temperature: float = 0.2,
         response_format: Optional[dict[str, Any]] = None,
+        extra_body: Optional[dict[str, Any]] = None,
     ) -> str:
         """Envía una instrucción y contexto textual a LM Studio."""
         resolved_model = self.resolve_model(model_type="text", requested_model=model)
@@ -319,6 +328,8 @@ class LMStudioClient:
             kwargs["reasoning_effort"] = reasoning_effort
         if response_format is not None:
             kwargs["response_format"] = response_format
+        if extra_body is not None:
+            kwargs["extra_body"] = extra_body
 
         return self._execute_chat_completion(kwargs, resolved_model)
 
@@ -333,6 +344,7 @@ class LMStudioClient:
         max_tokens: int = 2048,
         temperature: float = 0.2,
         response_format: Optional[dict[str, Any]] = None,
+        extra_body: Optional[dict[str, Any]] = None,
     ) -> str:
         """Envía una imagen (fuente primaria de evidencia) junto a OCR complementario a LM Studio."""
         data_uri = encode_image_to_data_uri(image_path)
@@ -375,6 +387,8 @@ class LMStudioClient:
             kwargs["reasoning_effort"] = reasoning_effort
         if response_format is not None:
             kwargs["response_format"] = response_format
+        if extra_body is not None:
+            kwargs["extra_body"] = extra_body
 
         return self._execute_chat_completion(kwargs, resolved_model)
 
@@ -388,6 +402,7 @@ class LMStudioClient:
         reasoning_effort: str = "none",
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        extra_body: Optional[dict[str, Any]] = None,
     ) -> T:
         """Envía una consulta textual estructurada y devuelve una instancia validada del esquema Pydantic."""
         schema_format = generate_json_schema(schema)
@@ -400,6 +415,7 @@ class LMStudioClient:
             max_tokens=max_tokens,
             temperature=temperature,
             response_format=schema_format,
+            extra_body=extra_body,
         )
         return parse_structured_json(raw_res, schema)
 
@@ -414,6 +430,7 @@ class LMStudioClient:
         reasoning_effort: str = "none",
         max_tokens: int = 2048,
         temperature: float = 0.2,
+        extra_body: Optional[dict[str, Any]] = None,
     ) -> T:
         """Envía una consulta visual estructurada y devuelve una instancia validada del esquema Pydantic."""
         schema_format = generate_json_schema(schema)
@@ -427,6 +444,7 @@ class LMStudioClient:
             max_tokens=max_tokens,
             temperature=temperature,
             response_format=schema_format,
+            extra_body=extra_body,
         )
         return parse_structured_json(raw_res, schema)
 

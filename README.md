@@ -204,7 +204,7 @@ $env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
 
 ## Esquemas Tipados y Structured Outputs
 
-El módulo `src/fieldnotes/schemas/` introduce esquemas Pydantic v2 (`pydantic>=2.12.0,<3.0.0`) con política estricta (`extra="forbid"`):
+El módulo `src/fieldnotes/schemas/` introduce esquemas Pydantic v2 (`pydantic>=2.12.0,<3.0.0`) con política estricta (`strict=True, extra="forbid"`):
 - `EvidenceValue[T]`: contenedor genérico para preservar el valor crudo (`raw`), el valor tipado (`normalized`), la página fuente (`source_page >= 1`), la incertidumbre (`uncertain`) y lecturas alternativas (`alternatives`).
 - `ExtractionWarning`: representación tipada de advertencias con campo `details` restringido a tipos JSON.
 - `BlockIR`, `PageIR`, `DocumentIR`: representación intermedia independiente del formato de salida.
@@ -221,4 +221,31 @@ pagina: EstadilloPage = client.ask_vision_structured(
     prompt="Extrae la tabla de notas de campo visible en la imagen.",
     schema=EstadilloPage,
 )
+```
+
+## Perfil de Dominio `estadillo`
+
+El perfil `--profile estadillo` implementa el flujo integral de digitalización de cuadernos de campo:
+1. **Inferencia OCR aislada**: Procesa el PDF/imagen con `Unlimited-OCR` en worker independiente y libera la VRAM.
+2. **Extracción estructurada con VLM**: Realiza consultas visuales secuenciales a `Qwen 3.5 9B` página a página extrayendo objetos `EstadilloPage`.
+3. **Fusión determinista multipágina** (`src/fieldnotes/merge/estadillo.py`): Ordena páginas y reconcilia la cabecera sin sobreescrituras silenciosas (emitiendo `HEADER_CONFLICT` ante discrepancias).
+4. **Normalización auditable de especies** (`src/fieldnotes/normalization/estadillo.py`): Mapea variantes de catálogo (`Ap` $\rightarrow$ `P`, `Ah` $\rightarrow$ `H`, `Ar` $\rightarrow$ `R`, `Mz` $\rightarrow$ `M`) en `especie.normalized` conservando `especie.raw` inalterado. Valores no reconocidos o ambiguos (como `M2`) generan `UNRECOGNIZED_SPECIES` sin auto-corrección destructiva.
+5. **Validación de calidad** (`src/fieldnotes/validation/estadillo.py`): Detecta duplicados `(col, fil)`, discontinuidades en secuencias de filas, formatos BBCH inválidos y anomalías de altura emitiendo `ExtractionWarning`.
+6. **Renderizado Markdown determinista** (`src/fieldnotes/render/markdown.py`): Genera exactamente las **dos tablas Markdown obligatorias de `AGENTS.md`** (tabla 1: 3x2 con metadatos y `Especies: P;H;R;M` fija; tabla 2: 8 columnas con todos los registros en orden de procedencia).
+7. **Persistencia canónica atómica**: Guarda los resultados en `<output_dir>/<safe_stem>/` (`notebook.md`, `document.json`, `pages/`, `raw/`, `assets/`).
+
+### Ejecución CLI con Perfil Estadillo
+
+```powershell
+.\.venv\Scripts\python.exe agent.py 26-05-06.pdf --profile estadillo --vision-model "qwen/qwen3.5-9b" --output ./output_ocr
+```
+
+### Prueba de integración real E2E (opt-in)
+
+Procesamiento completo de las 6 páginas de `26-05-06.pdf` con OCR worker y Qwen 3.5 9B:
+
+```powershell
+$env:RUN_ESTADILLO_INTEGRATION="1"
+$env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
+.\.venv\Scripts\python.exe -m unittest tests.test_profile_estadillo.TestRealEstadilloProfileIntegration.test_real_estadillo_e2e_on_pdf -v
 ```

@@ -8,6 +8,9 @@ from src.fieldnotes.schemas.warnings import ExtractionWarning
 from src.fieldnotes.schemas.document import BlockIR, PageIR, DocumentIR
 from src.fieldnotes.schemas.estadillo import (
     EstadilloHeader,
+    EstadilloPageHeader,
+    EstadilloDocHeader,
+    EstadilloDocumentHeader,
     EstadilloRow,
     EstadilloPage,
     EstadilloDocument,
@@ -245,8 +248,8 @@ class TestDocumentIRSchemas(unittest.TestCase):
 
 
 class TestEstadilloSchemas(unittest.TestCase):
-    def test_estadillo_header_valid(self):
-        header = EstadilloHeader(
+    def test_estadillo_page_header_valid(self):
+        header = EstadilloPageHeader(
             objetivo=EvidenceValue[str](raw="Muestreo de parcelas", source_page=1),
             fecha=EvidenceValue[str](raw="2026-05-06", source_page=1),
             asistentes=EvidenceValue[str](raw="C. Rueda, M. Perez", source_page=1),
@@ -258,9 +261,33 @@ class TestEstadilloSchemas(unittest.TestCase):
         self.assertEqual(header.objetivo.raw, "Muestreo de parcelas")
         self.assertEqual(header.source_page, 1)
 
-    def test_estadillo_header_mismatched_evidence_source_page_rejected(self):
+    def test_estadillo_page_header_requires_concrete_source_page(self):
+        # source_page es obligatorio en EstadilloPageHeader
+        with self.assertRaises(ValidationError):
+            EstadilloPageHeader(
+                objetivo=EvidenceValue[str](raw="Muestreo", source_page=1),
+            )  # type: ignore
+
+        # source_page=None debe ser rechazado en EstadilloPageHeader
+        with self.assertRaises(ValidationError):
+            EstadilloPageHeader(
+                objetivo=EvidenceValue[str](raw="Muestreo", source_page=1),
+                source_page=None,  # type: ignore
+            )
+
+    def test_estadillo_doc_header_allows_none_source_page_and_preserves_field_provenance(self):
+        doc_header = EstadilloDocHeader(
+            objetivo=EvidenceValue[str](raw="Objetivo de P1", source_page=1),
+            fecha=EvidenceValue[str](raw="2026-05-06", source_page=2),
+            source_page=None,
+        )
+        self.assertIsNone(doc_header.source_page)
+        self.assertEqual(doc_header.objetivo.source_page, 1)
+        self.assertEqual(doc_header.fecha.source_page, 2)
+
+    def test_estadillo_page_header_mismatched_evidence_source_page_rejected(self):
         with self.assertRaises(ValidationError) as ctx:
-            EstadilloHeader(
+            EstadilloPageHeader(
                 objetivo=EvidenceValue[str](raw="Muestreo", source_page=2),  # Discrepa con source_page=1
                 source_page=1,
             )
@@ -314,7 +341,7 @@ class TestEstadilloSchemas(unittest.TestCase):
         self.assertIn("source_page", str(ctx.exception))
 
     def test_estadillo_page_valid_consistency(self):
-        header = EstadilloHeader(
+        header = EstadilloPageHeader(
             objetivo=EvidenceValue[str](raw="Inventario", source_page=1),
             source_page=1,
         )
@@ -334,7 +361,7 @@ class TestEstadilloSchemas(unittest.TestCase):
         self.assertEqual(len(page.rows), 1)
 
     def test_estadillo_page_inconsistent_header_source_page_rejected(self):
-        header = EstadilloHeader(
+        header = EstadilloPageHeader(
             source_page=2,  # Discrepa con page_number=1
         )
         with self.assertRaises(ValidationError) as ctx:
@@ -387,7 +414,7 @@ class TestEstadilloSchemas(unittest.TestCase):
             pages=[
                 EstadilloPage(
                     page_number=1,
-                    header=EstadilloHeader(
+                    header=EstadilloPageHeader(
                         objetivo=EvidenceValue[str](raw="Test", source_page=1),
                         source_page=1,
                     ),
@@ -401,10 +428,170 @@ class TestEstadilloSchemas(unittest.TestCase):
                     ],
                 )
             ],
+            header=EstadilloDocHeader(
+                objetivo=EvidenceValue[str](raw="Test", source_page=1),
+                source_page=None,
+            ),
         )
         dumped = doc.model_dump_json()
         loaded = EstadilloDocument.model_validate_json(dumped)
         self.assertEqual(doc, loaded)
+
+
+class TestCompactDTOAndPureConversion(unittest.TestCase):
+    def test_dto_to_canonical_conversion_preserves_provenance_and_nulls(self):
+        from src.fieldnotes.schemas.dto import (
+            EstadilloHeaderDTO,
+            EstadilloRowDTO,
+            EstadilloPageDTO,
+            dto_to_estadillo_page,
+        )
+
+        dto = EstadilloPageDTO(
+            page_number=2,
+            header=EstadilloHeaderDTO(
+                objetivo="Control de plagas",
+                fecha="2026-05-06",
+                asistentes="CRA, NL",
+            ),
+            rows=[
+                EstadilloRowDTO(
+                    col=1,
+                    fil=26,
+                    especie="Ah",
+                    altura_cm=5.5,
+                    bbch="22",
+                    # id, foto, observaciones omitidos (None)
+                )
+            ],
+            warnings=["Calidad media"],
+            additional_text="Anotación marginal",
+        )
+
+        page = dto_to_estadillo_page(dto, page_number=2)
+        self.assertEqual(page.page_number, 2)
+        self.assertIsNotNone(page.header)
+        self.assertEqual(page.header.source_page, 2)
+        self.assertEqual(page.header.objetivo.raw, "Control de plagas")
+        self.assertEqual(page.header.objetivo.source_page, 2)
+        self.assertIsNone(page.header.equipamiento)
+
+        self.assertEqual(len(page.rows), 1)
+        r = page.rows[0]
+        self.assertEqual(r.source_page, 2)
+        self.assertEqual(r.col.raw, "1")
+        self.assertEqual(r.col.normalized, 1)
+        self.assertEqual(r.col.source_page, 2)
+        self.assertEqual(r.fil.normalized, 26)
+        self.assertEqual(r.especie.normalized, "Ah")
+        self.assertEqual(r.altura_cm.normalized, 5.5)
+        self.assertIsNone(r.id)
+        self.assertIsNone(r.foto)
+        self.assertIsNone(r.observaciones)
+
+        self.assertEqual(len(page.warnings), 1)
+        self.assertEqual(page.warnings[0].message, "Calidad media")
+        self.assertEqual(page.warnings[0].source_page, 2)
+        self.assertEqual(page.additional_text, "Anotación marginal")
+
+    def test_dto_uncertain_fields_and_float_parsing(self):
+        from src.fieldnotes.schemas.dto import (
+            EstadilloRowDTO,
+            EstadilloPageDTO,
+            dto_to_estadillo_page,
+        )
+
+        dto = EstadilloPageDTO(
+            page_number=1,
+            rows=[
+                EstadilloRowDTO(
+                    fil=10,
+                    especie="Ap?",
+                    altura_cm="12,5",
+                    uncertain_fields=["especie"],
+                ),
+                EstadilloRowDTO(
+                    fil=11,
+                    altura_cm="ilegible",
+                ),
+            ],
+        )
+
+        page = dto_to_estadillo_page(dto, page_number=1)
+        self.assertEqual(len(page.rows), 2)
+        r0 = page.rows[0]
+        self.assertTrue(r0.especie.uncertain)
+        self.assertFalse(r0.altura_cm.uncertain)
+        self.assertEqual(r0.altura_cm.normalized, 12.5)
+
+        r1 = page.rows[1]
+        self.assertTrue(r1.altura_cm.uncertain)
+        self.assertIsNone(r1.altura_cm.normalized)
+        self.assertEqual(r1.altura_cm.raw, "ilegible")
+
+    def test_dto_conversion_does_not_mutate_original(self):
+        import copy
+        from src.fieldnotes.schemas.dto import (
+            EstadilloHeaderDTO,
+            EstadilloRowDTO,
+            EstadilloPageDTO,
+            dto_to_estadillo_page,
+        )
+
+        dto = EstadilloPageDTO(
+            page_number=3,
+            header=EstadilloHeaderDTO(objetivo="Test"),
+            rows=[EstadilloRowDTO(fil=5, especie="Mz")],
+        )
+        dto_copy = copy.deepcopy(dto)
+        page = dto_to_estadillo_page(dto, page_number=3)
+
+        self.assertEqual(dto, dto_copy)
+        self.assertEqual(page.page_number, 3)
+
+    def test_dto_page_number_mismatch_raises_value_error(self):
+        from src.fieldnotes.schemas.dto import (
+            EstadilloPageDTO,
+            dto_to_estadillo_page,
+        )
+
+        dto = EstadilloPageDTO(page_number=1, rows=[])
+        with self.assertRaises(ValueError) as ctx:
+            dto_to_estadillo_page(dto, page_number=2)
+        self.assertIn("Discrepancia de número de página en DTO: recibido=1, esperado=2", str(ctx.exception))
+
+    def test_canonical_page_number_mismatch_raises_value_error(self):
+        from src.fieldnotes.schemas.estadillo import EstadilloPage
+        from src.fieldnotes.schemas.dto import dto_to_estadillo_page
+
+        canonical_page = EstadilloPage(page_number=1, rows=[])
+        with self.assertRaises(ValueError) as ctx:
+            dto_to_estadillo_page(canonical_page, page_number=2)
+        self.assertIn("Discrepancia de número de página en EstadilloPage: recibido=1, esperado=2", str(ctx.exception))
+
+    def test_unknown_uncertain_fields_ignored_safely_without_falsifying_evidence(self):
+        from src.fieldnotes.schemas.dto import (
+            EstadilloRowDTO,
+            EstadilloPageDTO,
+            dto_to_estadillo_page,
+        )
+
+        dto = EstadilloPageDTO(
+            page_number=1,
+            rows=[
+                EstadilloRowDTO(
+                    col=1,
+                    fil=26,
+                    especie="Ah",
+                    uncertain_fields=["unknown_field", "header", "fil"],
+                )
+            ],
+        )
+        page = dto_to_estadillo_page(dto, page_number=1)
+        r = page.rows[0]
+        self.assertTrue(r.fil.uncertain, "fil debe estar marcado como uncertain")
+        self.assertFalse(r.col.uncertain, "col no debe verse afectado por campos desconocidos")
+        self.assertFalse(r.especie.uncertain, "especie no debe verse afectada por campos desconocidos")
 
 
 if __name__ == "__main__":

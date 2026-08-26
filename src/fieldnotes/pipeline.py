@@ -328,3 +328,25 @@ class UnlimitedOCRAgent:
     def export_to_pdf(self, text: str, output_path: str) -> str:
         """Convierte el texto/markdown procesado a un archivo PDF estilizado."""
         return export_to_pdf(text, output_path)
+
+    def process_estadillo(
+        self,
+        file_path: str | Path,
+        output_dir: Optional[str | Path] = None,
+        prompt: Optional[str] = None,
+        vision_model: Optional[str] = None,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ):
+        """Procesa un archivo PDF o imagen bajo el perfil de dominio 'estadillo'.
+
+        Retorna una tupla (markdown_text, estadillo_doc) y persiste el layout
+        canónico en <output_dir>/<stem>/.
+        """
+        from .profiles.estadillo import EstadilloProfile
+        profile = EstadilloProfile(
+            agent=self,
+            output_base_dir=output_dir,
+            vision_model=vision_model,
+        )
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)

@@ -32,7 +32,7 @@ No se deben inventar datos ausentes o ilegibles.
 Hardware principal:
 
 * NVIDIA RTX 4070 Ti
-* 8 GB VRAM
+* 12 GB VRAM
 
 Todo el procesamiento debe poder ejecutarse localmente.
 
@@ -133,7 +133,7 @@ El VLM no debe generar directamente el Markdown definitivo siempre que pueda evi
 
 # Restricción importante de VRAM
 
-Unlimited-OCR y Qwen 3.5 9B no deben competir simultáneamente por los 8 GB de VRAM.
+Unlimited-OCR y Qwen 3.5 9B no deben competir simultáneamente por los 12 GB de VRAM.
 
 El procesamiento debe realizarse por fases.
 

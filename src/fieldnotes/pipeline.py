@@ -2,9 +2,9 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
 from .artifacts import PageArtifact
-from .config import setup_encoding, get_lm_studio_url, get_lm_studio_api_key
+from .config import setup_encoding, get_lm_studio_url, get_lm_studio_api_key, get_lm_studio_timeout
 from .ingest.pdf import extract_pdf_images, extract_pdf_page_artifacts
 from .ocr.worker import run_ocr_worker
 from .vlm.lmstudio import LMStudioClient
@@ -18,9 +18,12 @@ class UnlimitedOCRAgent:
         self,
         model_name: str = "baidu/Unlimited-OCR",
         output_dir: str = "./output_ocr",
+        vision_model: Optional[str] = None,
+        text_model: Optional[str] = None,
         lm_model: Optional[str] = None,
         ocr_mode: Literal["worker", "in_process"] = "worker",
         worker_timeout: Optional[int] = None,
+        validate_model: bool = True,
     ):
         if ocr_mode not in ("worker", "in_process"):
             raise ValueError(f"Invalid ocr_mode: {ocr_mode}. Must be 'worker' or 'in_process'.")
@@ -38,7 +41,6 @@ class UnlimitedOCRAgent:
         self.output_dir = tempfile.mkdtemp(prefix="run_", dir=self.base_output_dir)
         self.page_artifacts: list[PageArtifact] = []
 
-        initial_lm_model = lm_model or os.getenv("LM_STUDIO_MODEL")
         if self.ocr_mode == "in_process":
             from .ocr.unlimited import UnlimitedOCR
             self.ocr = UnlimitedOCR(model_name=self.model_name, output_dir=self.output_dir)
@@ -48,7 +50,11 @@ class UnlimitedOCRAgent:
         self.vlm = LMStudioClient(
             base_url=get_lm_studio_url(),
             api_key=get_lm_studio_api_key(),
-            default_model=initial_lm_model,
+            vision_model=vision_model,
+            text_model=text_model,
+            timeout=get_lm_studio_timeout(),
+            default_model=lm_model,
+            validate_model=validate_model,
         )
 
     def _check_in_process_property(self, prop_name: str) -> None:
@@ -101,12 +107,28 @@ class UnlimitedOCRAgent:
         self.ocr.model = value
 
     @property
-    def lm_model(self):
+    def lm_model(self) -> Optional[str]:
         return self.vlm.model
 
     @lm_model.setter
-    def lm_model(self, value):
+    def lm_model(self, value: Optional[str]) -> None:
         self.vlm.model = value
+
+    @property
+    def vision_model(self) -> Optional[str]:
+        return self.vlm.vision_model
+
+    @vision_model.setter
+    def vision_model(self, value: Optional[str]) -> None:
+        self.vlm.vision_model = value
+
+    @property
+    def text_model(self) -> Optional[str]:
+        return self.vlm.text_model
+
+    @text_model.setter
+    def text_model(self, value: Optional[str]) -> None:
+        self.vlm.text_model = value
 
     @property
     def llm_client(self):
@@ -202,7 +224,7 @@ class UnlimitedOCRAgent:
 
     def _resolve_lm_model(self) -> str:
         """Obtiene el identificador de un modelo de texto disponible en LM Studio."""
-        self.lm_model = self.vlm.resolve_model()
+        self.lm_model = self.vlm.resolve_model(model_type="text")
         return self.lm_model
 
     def ask_lmstudio(
@@ -212,7 +234,7 @@ class UnlimitedOCRAgent:
         reasoning_effort: str = "none",
         max_tokens: int = 2048,
     ) -> str:
-        """Envía el contenido del documento extraído a LM Studio para análisis."""
+        """Envía el contenido del documento extraído a LM Studio para análisis de texto."""
         return self.vlm.ask(document_text, question, reasoning_effort, max_tokens)
 
     def ask_lmstudio_chunked(
@@ -225,41 +247,42 @@ class UnlimitedOCRAgent:
         max_tokens: int,
     ) -> str:
         """Resume documentos largos en fragmentos y sintetiza el resultado."""
-        if chunk_overlap >= chunk_size:
-            raise ValueError("chunk_overlap debe ser menor que chunk_size")
-
-        chunks = []
-        start = 0
-        while start < len(document_text):
-            end = min(start + chunk_size, len(document_text))
-            chunks.append(document_text[start:end])
-            if end == len(document_text):
-                break
-            start = end - chunk_overlap
-
-        partials = []
-        for index, chunk in enumerate(chunks, start=1):
-            print(f"Analizando fragmento {index}/{len(chunks)}...")
-            partial = self.ask_lmstudio(
-                chunk,
-                "Analiza únicamente este fragmento y extrae los datos relevantes para la tarea. "
-                + question,
-                reasoning_effort=reasoning_effort,
-                max_tokens=max_tokens,
-            )
-            if partial.strip():
-                partials.append(f"### Fragmento {index}\n{partial}")
-
-        if not partials:
-            return ""
-
-        print("Sintetizando los resultados parciales...")
-        return self.ask_lmstudio(
-            "\n\n".join(partials),
-            "Combina los análisis parciales en una respuesta única, coherente y fiel al documento. "
-            + question,
+        return self.vlm.ask_chunked(
+            document_text=document_text,
+            question=question,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
+        )
+
+    def ask_vision(
+        self,
+        image_path: str | Path,
+        prompt: str,
+        ocr_context: Optional[str] = None,
+        **kwargs: Any,
+    ) -> str:
+        """Envía una imagen (fuente primaria) y contexto OCR a LM Studio (secuencial tras OCR)."""
+        return self.vlm.ask_vision(
+            image_path=image_path,
+            prompt=prompt,
+            ocr_context=ocr_context,
+            **kwargs,
+        )
+
+    def ask_page_vision(
+        self,
+        page_artifact: PageArtifact,
+        prompt: str,
+        **kwargs: Any,
+    ) -> str:
+        """Envía la imagen de un PageArtifact y su OCR de apoyo correspondiente a LM Studio."""
+        return self.vlm.ask_vision(
+            image_path=page_artifact.image_path,
+            prompt=prompt,
+            ocr_context=page_artifact.raw_ocr,
+            **kwargs,
         )
 
     def export_to_markdown(self, text: str, output_path: str) -> str:

@@ -1,6 +1,6 @@
 # Agente de OCR con Unlimited-OCR y LM Studio
 
-Herramienta local para digitalizar documentos PDF e imágenes mediante el modelo multimodal `baidu/Unlimited-OCR`. Puede exportar el resultado a Markdown o PDF y, opcionalmente, enviarlo a LM Studio para análisis adicional.
+Herramienta local para digitalizar documentos PDF e imágenes mediante el modelo multimodal `baidu/Unlimited-OCR`. Puede exportar el resultado a Markdown o PDF y, opcionalmente, enviarlo a LM Studio para análisis de texto o procesamiento visual multimodal.
 
 Unlimited-OCR debe entenderse como un modelo de OCR y parsing visual de documentos. Su objetivo es reconocer texto, tablas, fórmulas y estructura en imágenes, incluso a lo largo de varias páginas. No es un modelo de resumen ni un compresor de contexto para sustituir a un LLM.
 
@@ -8,7 +8,7 @@ Unlimited-OCR debe entenderse como un modelo de OCR y parsing visual de document
 
 - Python 3.10 a 3.12
 - `uv`
-- LM Studio, únicamente para consultas y procesamiento posterior al OCR
+- LM Studio, para consultas y procesamiento posterior al OCR (texto o visión con `Qwen 3.5 9B`)
 - GPU NVIDIA compatible, si se desea aceleración CUDA
 
 ## Instalación
@@ -46,6 +46,16 @@ Procesar el texto con LM Studio:
 .\.venv\Scripts\python.exe agent.py documento.pdf "Resume las obligaciones y las fechas importantes" --export-md resumen.md
 ```
 
+### Modo Multimodal (Visión + OCR)
+
+Para que el modelo VLM (`Qwen 3.5 9B`) consulte directamente la imagen como fuente primaria de evidencia y utilice el OCR como contexto complementario:
+
+```powershell
+.\.venv\Scripts\python.exe agent.py 26-05-06.pdf --ask-vision --vision-model "qwen/qwen3.5-9b" --export-md 26-05-06_vision.md
+```
+
+En documentos PDF, `--ask-vision` procesa el OCR en subproceso aislado, libera la GPU, y posteriormente procesa de forma secuencial cada página enviando la imagen y su OCR correspondiente a LM Studio.
+
 También puedes mantener la instrucción fuera del código y cambiarla entre ejecuciones:
 
 ```powershell
@@ -66,10 +76,11 @@ También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en u
   - `ingest/pdf.py`: rasterizado de páginas a `pages/page_001.png` y wrappers compatibles.
   - `ocr/unlimited.py`: inferencia OCR, particionado determinista de bloques `<PAGE>` y persistencia en `raw/`.
   - `ocr/worker.py`: subproceso aislado de inferencia OCR, protocolo IPC determinista y excepciones tipadas.
-  - `pipeline.py`: orquestador `UnlimitedOCRAgent` con soporte de `ocr_mode` (`worker` e `in_process`).
-  - `config.py`: configuración de entorno, timeout del worker y codificación.
+  - `vlm/lmstudio.py`: cliente multimodal para LM Studio (`ask_text`, `ask_vision`), codificación Data URI y excepciones tipadas.
+  - `pipeline.py`: orquestador `UnlimitedOCRAgent` con soporte de `ocr_mode` (`worker` e `in_process`) y visión.
+  - `config.py`: configuración de entorno, modelos de visión/texto, timeout del worker y codificación.
   - `export.py`: exportación a Markdown y PDF.
-  - `cli.py`: interfaz de línea de comandos.
+  - `cli.py`: interfaz de línea de comandos con soporte `--ask-vision`, `--vision-model` y `--text-model`.
 - `setup_env.py`: detección de hardware e instalación de PyTorch.
 - `requirements.txt`: dependencias Python.
 - `26-05-06.pdf`: documento de prueba incluido en el repositorio.
@@ -80,7 +91,7 @@ En sistemas con 12 GB de VRAM (NVIDIA RTX 4070 Ti), `Unlimited-OCR` y `Qwen 3.5 
 1. **Rasterizado**: El proceso padre convierte el PDF a imágenes en `pages/page_001.png...`.
 2. **Inferencia OCR aislada**: Por defecto (`ocr_mode="worker"`), se lanza un subproceso hijo independiente mediante `subprocess` (`shell=False`).
 3. **Liberación de VRAM**: Al completar la extracción, el proceso worker finaliza y el sistema operativo reclama la memoria CUDA. El proceso padre nunca importa `torch` ni `transformers` en este modo.
-4. **Procesamiento VLM**: El proceso padre lee el texto extraído desde `result.md` e interactúa con LM Studio con la GPU disponible.
+4. **Procesamiento VLM Multimodal**: El proceso padre lee el texto extraído e interactúa con LM Studio (`ask_text` o `ask_vision`) con la memoria de GPU totalmente libre.
 
 ### Protocolo IPC determinista
 La comunicación entre padre e hijo se gestiona dentro del subdirectorio temporal del run en `output_ocr/run_xxx/ipc/`:
@@ -122,22 +133,24 @@ Por defecto, el agente elimina el subdirectorio temporal al finalizar. Para cons
 
 Las rutas indicadas mediante `--export-md` y `--export-pdf` se conservan; solo se limpia el subdirectorio temporal de esa ejecución.
 
-## Configuración de LM Studio
+## Configuración de Modelos en LM Studio
 
-El agente consulta `/v1/models` y selecciona automáticamente el primer modelo de texto disponible. También puedes fijar el modelo explícitamente:
+La resolución de modelos sigue un orden de precedencia determinista y estricto:
+1. Argumento específico por llamada en `ask_text(model=...)` o `ask_vision(model=...)`.
+2. Opciones de CLI `--vision-model` y `--text-model` (o constructor `vision_model` / `text_model`).
+3. Variables de entorno específicas `LM_STUDIO_VISION_MODEL` y `LM_STUDIO_TEXT_MODEL`.
+4. Opciones CLI legacy `--lm-model` (o constructor `default_model` / `lm_model`).
+5. Variable de entorno legacy `LM_STUDIO_MODEL`.
+
+Ejemplo de configuración por entorno:
 
 ```powershell
-$env:LM_STUDIO_MODEL="qwen/qwen3.6-27b"
-python agent.py documento.pdf "¿Cuántas filas existen en el experimento?" --export-md respuesta.md
+$env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
+$env:LM_STUDIO_TEXT_MODEL="qwen/qwen3.5-9b"
+python agent.py documento.pdf --ask-vision --export-md respuesta.md
 ```
 
-O mediante la opción equivalente:
-
-```powershell
-python agent.py documento.pdf "¿Cuántas filas existen en el experimento?" --lm-model qwen/qwen3.6-27b --export-md respuesta.md
-```
-
-No se debe usar `local-model` salvo que ese sea realmente el identificador anunciado por `/v1/models`.
+Si no se especifica ningún modelo para la operación solicitada, el sistema lanza `LMStudioModelNotConfiguredError` indicando en el diagnóstico los modelos anunciados por `/v1/models`.
 
 ### Razonamiento y documentos extensos
 
@@ -161,15 +174,23 @@ Para consultas posteriores a OCR, el agente envía `reasoning_effort="none"` por
 
 ## Tests y Validación
 
-Ejecución de la suite completa de tests unitarios offline:
+Ejecución de la suite completa de tests unitarios offline (100% mocked, sin dependencias de red ni servidor):
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Para ejecutar opcionalmente la prueba de integración con el worker OCR real y liberación de VRAM (requiere GPU con CUDA y el PDF de prueba):
+### Pruebas de integración reales (opt-in)
 
+1. **Integración con Unlimited-OCR y liberación de VRAM** (requiere GPU CUDA y archivo `26-05-06.pdf`):
 ```powershell
 $env:RUN_OCR_WORKER_INTEGRATION="1"
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv\Scripts\python.exe -m unittest tests.test_ocr.TestRealOCRWorkerIntegration.test_real_ocr_worker_pipeline_on_pdf -v
+```
+
+2. **Integración multimodal con LM Studio / Qwen 3.5 9B** (requiere LM Studio activo en `http://localhost:1234`):
+```powershell
+$env:RUN_LMSTUDIO_VISION_INTEGRATION="1"
+$env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
+.\.venv\Scripts\python.exe -m unittest tests.test_vlm.TestRealLMStudioVisionIntegration.test_real_lmstudio_vision_query -v
 ```

@@ -1,6 +1,12 @@
 import argparse
+import os
 from typing import Optional
 from .pipeline import UnlimitedOCRAgent
+from .config import (
+    get_lm_studio_vision_model,
+    get_lm_studio_text_model,
+    get_lm_studio_legacy_model,
+)
 
 
 def build_parser():
@@ -32,7 +38,20 @@ def build_parser():
     )
     parser.add_argument(
         "--lm-model",
-        help="Identificador del modelo de texto de LM Studio; si se omite se detecta automáticamente",
+        help="Identificador del modelo de LM Studio (legacy; mapea a texto y fallback de visión)",
+    )
+    parser.add_argument(
+        "--vision-model",
+        help="Identificador del modelo de visión multimodal de LM Studio (p. ej. Qwen 3.5 9B)",
+    )
+    parser.add_argument(
+        "--text-model",
+        help="Identificador del modelo de texto de LM Studio",
+    )
+    parser.add_argument(
+        "--ask-vision",
+        action="store_true",
+        help="Activa el análisis multimodal enviando la imagen original junto con el texto OCR",
     )
     parser.add_argument(
         "--instruction-file",
@@ -91,8 +110,35 @@ def main(args=None):
         with open(parsed_args.instruction_file, "r", encoding="utf-8") as f:
             instruction = f.read().strip()
 
+    # Precedencia exacta de resolución de modelos en CLI:
+    # 1. Flag específico CLI (--vision-model / --text-model)
+    # 2. Variable de entorno específica (LM_STUDIO_VISION_MODEL / LM_STUDIO_TEXT_MODEL)
+    # 3. Flag legacy CLI (--lm-model)
+    # 4. Variable de entorno legacy (LM_STUDIO_MODEL)
+    legacy_env = get_lm_studio_legacy_model()
+    vision_model = (
+        parsed_args.vision_model
+        or get_lm_studio_vision_model()
+        or parsed_args.lm_model
+        or legacy_env
+    )
+    text_model = (
+        parsed_args.text_model
+        or get_lm_studio_text_model()
+        or parsed_args.lm_model
+        or legacy_env
+    )
+
+    if parsed_args.ask_vision and not vision_model:
+        parser.error(
+            "Para usar --ask-vision debe especificarse un modelo de visión mediante "
+            "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
+        )
+
     agent = UnlimitedOCRAgent(
-        lm_model=parsed_args.lm_model,
+        vision_model=vision_model,
+        text_model=text_model,
+        lm_model=parsed_args.lm_model or legacy_env,
         ocr_mode=parsed_args.ocr_mode,
         worker_timeout=parsed_args.worker_timeout,
     )
@@ -101,7 +147,8 @@ def main(args=None):
 
         atexit.register(agent.cleanup)
 
-    if parsed_args.file_path.lower().endswith(".pdf"):
+    is_pdf = parsed_args.file_path.lower().endswith(".pdf")
+    if is_pdf:
         raw_ocr_text = agent.extract_from_pdf(parsed_args.file_path)
     else:
         raw_ocr_text = agent.extract_from_image(parsed_args.file_path)
@@ -112,6 +159,27 @@ def main(args=None):
 
     if parsed_args.raw:
         final_result = raw_ocr_text
+    elif parsed_args.ask_vision:
+        print("Consultando a LM Studio en modo multimodal (Visión + OCR)...")
+        if is_pdf:
+            page_results = []
+            for artifact in agent.page_artifacts:
+                page_text = agent.ask_page_vision(
+                    artifact,
+                    prompt=instruction,
+                    reasoning_effort=parsed_args.reasoning_effort,
+                    max_tokens=parsed_args.max_tokens,
+                )
+                page_results.append(f"### Página {artifact.page_number}\n{page_text}")
+            final_result = "\n\n".join(page_results)
+        else:
+            final_result = agent.ask_vision(
+                image_path=parsed_args.file_path,
+                prompt=instruction,
+                ocr_context=raw_ocr_text,
+                reasoning_effort=parsed_args.reasoning_effort,
+                max_tokens=parsed_args.max_tokens,
+            )
     elif parsed_args.chunk_size > 0 and len(raw_ocr_text) > parsed_args.chunk_size:
         final_result = agent.ask_lmstudio_chunked(
             raw_ocr_text,

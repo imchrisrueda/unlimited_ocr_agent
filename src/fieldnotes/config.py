@@ -14,6 +14,23 @@ def get_lm_studio_url():
 def get_lm_studio_api_key():
     return os.getenv("LM_STUDIO_API_KEY", "lm-studio")
 
+def get_lm_studio_vision_model() -> str | None:
+    return os.getenv("LM_STUDIO_VISION_MODEL")
+
+def get_lm_studio_text_model() -> str | None:
+    return os.getenv("LM_STUDIO_TEXT_MODEL")
+
+def get_lm_studio_legacy_model() -> str | None:
+    return os.getenv("LM_STUDIO_MODEL")
+
+def get_lm_studio_timeout() -> int:
+    val = os.getenv("LM_STUDIO_TIMEOUT", "120")
+    try:
+        timeout = int(val)
+        return timeout if timeout > 0 else 120
+    except (ValueError, TypeError):
+        return 120
+
 def get_ocr_worker_timeout() -> int:
     val = os.getenv("OCR_WORKER_TIMEOUT", "1800")
     try:

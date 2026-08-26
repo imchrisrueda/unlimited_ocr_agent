@@ -213,11 +213,11 @@ class TestPipeline(unittest.TestCase):
     def test_ask_lmstudio_chunked(self, mock_lmstudio):
         from src.fieldnotes.pipeline import UnlimitedOCRAgent
 
-        agent = UnlimitedOCRAgent(output_dir=self.test_dir)
+        mock_vlm = MagicMock()
+        mock_vlm.ask_chunked.return_value = "final_synthesis"
+        mock_lmstudio.return_value = mock_vlm
 
-        agent.ask_lmstudio = MagicMock(
-            side_effect=["partial1", "partial2", "final_synthesis"]
-        )
+        agent = UnlimitedOCRAgent(output_dir=self.test_dir)
 
         text = "a" * 1000
         res = agent.ask_lmstudio_chunked(
@@ -230,7 +230,14 @@ class TestPipeline(unittest.TestCase):
         )
 
         self.assertEqual(res, "final_synthesis")
-        self.assertEqual(agent.ask_lmstudio.call_count, 3)
+        mock_vlm.ask_chunked.assert_called_once_with(
+            document_text=text,
+            question="Summarize",
+            chunk_size=600,
+            chunk_overlap=100,
+            reasoning_effort="none",
+            max_tokens=100,
+        )
         agent.cleanup()
 
     @patch("fitz.open")
@@ -276,6 +283,85 @@ class TestPipeline(unittest.TestCase):
         proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"Clean module check failed: {proc.stderr}")
         self.assertIn("CLEAN_MODULES_OK", proc.stdout)
+
+    @patch("src.fieldnotes.pipeline.LMStudioClient")
+    def test_ask_vision_in_pipeline(self, mock_lmstudio):
+        mock_vlm_instance = MagicMock()
+        mock_vlm_instance.ask_vision.return_value = "vision result"
+        mock_vlm_instance.vision_model = "qwen/qwen3.5-9b"
+        mock_vlm_instance.text_model = "qwen-text"
+        mock_lmstudio.return_value = mock_vlm_instance
+
+        from src.fieldnotes.pipeline import UnlimitedOCRAgent
+
+        agent = UnlimitedOCRAgent(
+            vision_model="qwen/qwen3.5-9b",
+            text_model="qwen-text",
+            output_dir=self.test_dir,
+        )
+
+        res = agent.ask_vision(
+            image_path="test.png",
+            prompt="analiza",
+            ocr_context="contexto ocr",
+        )
+        self.assertEqual(res, "vision result")
+        mock_vlm_instance.ask_vision.assert_called_once_with(
+            image_path="test.png",
+            prompt="analiza",
+            ocr_context="contexto ocr",
+        )
+        self.assertEqual(agent.vision_model, "qwen/qwen3.5-9b")
+        self.assertEqual(agent.text_model, "qwen-text")
+        agent.cleanup()
+
+    @patch("src.fieldnotes.pipeline.LMStudioClient")
+    def test_ask_page_vision_in_pipeline(self, mock_lmstudio):
+        mock_vlm_instance = MagicMock()
+        mock_vlm_instance.ask_vision.return_value = "page vision result"
+        mock_lmstudio.return_value = mock_vlm_instance
+
+        from src.fieldnotes.pipeline import UnlimitedOCRAgent
+
+        agent = UnlimitedOCRAgent(output_dir=self.test_dir)
+        artifact = PageArtifact(
+            page_number=1,
+            image_path=Path("pages/page_001.png"),
+            raw_ocr="texto ocr pagina 1",
+        )
+
+        res = agent.ask_page_vision(artifact, prompt="extrae campos")
+        self.assertEqual(res, "page vision result")
+        mock_vlm_instance.ask_vision.assert_called_once_with(
+            image_path=Path("pages/page_001.png"),
+            prompt="extrae campos",
+            ocr_context="texto ocr pagina 1",
+        )
+        agent.cleanup()
+
+    @patch("openai.OpenAI")
+    def test_agent_ask_vision_with_only_legacy_env(self, mock_openai):
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.models.list.return_value.data = [MagicMock(id="legacy_qwen_35")]
+        mock_resp = MagicMock()
+        mock_resp.choices = [MagicMock(message=MagicMock(content="vision response from legacy env model"))]
+        mock_client.chat.completions.create.return_value = mock_resp
+
+        from src.fieldnotes.pipeline import UnlimitedOCRAgent
+
+        test_img = Path(self.test_dir) / "test.png"
+        with open(test_img, "wb") as f:
+            f.write(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDRtestdata")
+
+        with patch.dict(os.environ, {"LM_STUDIO_MODEL": "legacy_qwen_35"}, clear=True):
+            agent = UnlimitedOCRAgent(output_dir=self.test_dir)
+            res = agent.ask_vision(image_path=test_img, prompt="analiza imagen")
+
+        self.assertEqual(res, "vision response from legacy env model")
+        kwargs = mock_client.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], "legacy_qwen_35")
+        agent.cleanup()
 
 
 if __name__ == "__main__":

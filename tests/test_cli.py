@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 from unittest.mock import patch, MagicMock
 from src.fieldnotes.cli import build_parser, main
 
@@ -14,16 +14,16 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(args.max_tokens, 2048)
         self.assertEqual(args.reasoning_effort, "none")
         self.assertEqual(args.prompt, "Digitaliza este documento manteniendo su estructura en Markdown limpio.")
-        
+
     @patch('src.fieldnotes.cli.UnlimitedOCRAgent')
     @patch('builtins.print')
     def test_main_execution_raw(self, mock_print, mock_agent_class):
         mock_agent = MagicMock()
         mock_agent_class.return_value = mock_agent
         mock_agent.extract_from_image.return_value = "raw ocr output"
-        
+
         main(["image.png", "--raw"])
-        
+
         mock_agent_class.assert_called_once()
         mock_agent.extract_from_image.assert_called_once_with("image.png")
         mock_agent.ask_lmstudio.assert_not_called()
@@ -34,7 +34,7 @@ class TestCLI(unittest.TestCase):
         mock_agent = MagicMock()
         mock_agent_class.return_value = mock_agent
         mock_agent.extract_from_pdf.return_value = "pdf ocr output"
-        
+
         main(["doc.pdf", "--raw"])
         mock_agent.extract_from_pdf.assert_called_once_with("doc.pdf")
 

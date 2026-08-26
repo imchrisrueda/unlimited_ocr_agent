@@ -1,4 +1,4 @@
-import os
+﻿import os
 
 class UnlimitedOCR:
     def __init__(self, model_name: str, output_dir: str):
@@ -6,13 +6,13 @@ class UnlimitedOCR:
         from transformers import AutoModel, AutoTokenizer
         self.model_name = model_name
         self.output_dir = output_dir
-        
+
         print("Cargando modelo de visión Unlimited-OCR...")
         self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_name, 
+            self.model_name,
             trust_remote_code=True
         )
-        
+
         # Detección y selección automática de hardware (GPU vs CPU)
         if torch.cuda.is_available():
             self.device = "cuda"
@@ -23,11 +23,11 @@ class UnlimitedOCR:
             self.device = "cpu"
             self.dtype = torch.float32
             print("GPU no detectada en PyTorch. Ejecutando en modo CPU...")
-        
+
         self.model = AutoModel.from_pretrained(
-            self.model_name, 
-            trust_remote_code=True, 
-            use_safetensors=True, 
+            self.model_name,
+            trust_remote_code=True,
+            use_safetensors=True,
             torch_dtype=self.dtype
         ).eval().to(self.device)
 

@@ -1,4 +1,4 @@
-class LMStudioClient:
+﻿class LMStudioClient:
     def __init__(self, base_url: str, api_key: str, default_model: str = None):
         from openai import OpenAI
         # Cliente OpenAI para conectar con el servidor local de LM Studio
@@ -46,7 +46,7 @@ class LMStudioClient:
             f"=============================================\n\n"
             f"INSTRUCCIÓN DEL USUARIO: {question}"
         )
-        
+
         try:
             response = self.client.chat.completions.create(
                 model=self.resolve_model(),

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "namespace": "http://www.w3.org/ns/prov#",
+  "classes": {
+    "dataset": "prov:Entity",
+    "code": "prov:Entity",
+    "parameters": "prov:Entity",
+    "result": "prov:Entity",
+    "artifact": "prov:Entity",
+    "analysis": "prov:Activity",
+    "run": "prov:Activity",
+    "person": "prov:Agent",
+    "organization": "prov:Agent",
+    "software_agent": "prov:Agent"
+  },
+  "relations": {
+    "used": "prov:used",
+    "generated_by": "prov:wasGeneratedBy",
+    "derived_from": "prov:wasDerivedFrom",
+    "associated_with": "prov:wasAssociatedWith",
+    "attributed_to": "prov:wasAttributedTo"
+  }
+}

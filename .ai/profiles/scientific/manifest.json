@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "name": "scientific",
+  "parent": "software",
+  "capabilities": [
+    "scientific_design",
+    "scientific_knowledge",
+    "structural_science_lint",
+    "prov_o_mapping",
+    "ro_crate_template",
+    "scientific_audit",
+    "optional_semantic_memory"
+  ],
+  "directories": [
+    "provenance/runs"
+  ],
+  "files": [
+    {
+      "source": "files/knowledge/science/README.md",
+      "target": "knowledge/science/README.md"
+    },
+    {
+      "source": "files/knowledge/science/objectives.json",
+      "target": "knowledge/science/objectives.json"
+    },
+    {
+      "source": "files/knowledge/science/research_questions.json",
+      "target": "knowledge/science/research_questions.json"
+    },
+    {
+      "source": "files/knowledge/science/hypotheses.json",
+      "target": "knowledge/science/hypotheses.json"
+    },
+    {
+      "source": "files/knowledge/science/assumptions.json",
+      "target": "knowledge/science/assumptions.json"
+    },
+    {
+      "source": "files/knowledge/science/datasets.json",
+      "target": "knowledge/science/datasets.json"
+    },
+    {
+      "source": "files/knowledge/science/variables.json",
+      "target": "knowledge/science/variables.json"
+    },
+    {
+      "source": "files/knowledge/science/methods.json",
+      "target": "knowledge/science/methods.json"
+    },
+    {
+      "source": "files/knowledge/science/experiments.json",
+      "target": "knowledge/science/experiments.json"
+    },
+    {
+      "source": "files/knowledge/science/analyses.json",
+      "target": "knowledge/science/analyses.json"
+    },
+    {
+      "source": "files/knowledge/science/runs.json",
+      "target": "knowledge/science/runs.json"
+    },
+    {
+      "source": "files/knowledge/science/results.json",
+      "target": "knowledge/science/results.json"
+    },
+    {
+      "source": "files/knowledge/science/evidence.json",
+      "target": "knowledge/science/evidence.json"
+    },
+    {
+      "source": "files/knowledge/science/claims.json",
+      "target": "knowledge/science/claims.json"
+    },
+    {
+      "source": "files/knowledge/science/conclusions.json",
+      "target": "knowledge/science/conclusions.json"
+    },
+    {
+      "source": "files/knowledge/science/limitations.json",
+      "target": "knowledge/science/limitations.json"
+    },
+    {
+      "source": "files/knowledge/science/artifacts.json",
+      "target": "knowledge/science/artifacts.json"
+    },
+    {
+      "source": "files/knowledge/science/literature.json",
+      "target": "knowledge/science/literature.json"
+    },
+    {
+      "source": "files/knowledge/science/insights.json",
+      "target": "knowledge/science/insights.json"
+    },
+    {
+      "source": "files/knowledge/science/evidence_conflicts.json",
+      "target": "knowledge/science/evidence_conflicts.json"
+    },
+    {
+      "source": "files/knowledge/science/id_registry.json",
+      "target": "knowledge/science/id_registry.json"
+    },
+    {
+      "source": "files/provenance/README.md",
+      "target": "provenance/README.md"
+    },
+    {
+      "source": "files/provenance/mappings/prov-o.json",
+      "target": "provenance/mappings/prov-o.json"
+    },
+    {
+      "source": "files/provenance/templates/ro-crate-metadata.template.json",
+      "target": "provenance/templates/ro-crate-metadata.template.json"
+    }
+  ],
+  "config_patch": {
+    "project": {
+      "profile": "scientific"
+    },
+    "knowledge": {
+      "scientific_graph": {
+        "enabled": true
+      },
+      "provenance": {
+        "enabled": true,
+        "ro_crate": true,
+        "prov_o": true,
+        "run_crate": false
+      }
+    }
+  }
+}

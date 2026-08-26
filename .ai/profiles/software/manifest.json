@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "name": "software",
+  "parent": "code",
+  "capabilities": [
+    "project_brief",
+    "architecture",
+    "project_plan",
+    "risks",
+    "adr",
+    "structured_backlog",
+    "dependency_analysis",
+    "optional_structural_graph"
+  ],
+  "directories": [
+    "docs/decisions"
+  ],
+  "files": [
+    {
+      "source": "files/docs/PROJECT_BRIEF.md",
+      "target": "docs/PROJECT_BRIEF.md"
+    },
+    {
+      "source": "files/docs/ARCHITECTURE.md",
+      "target": "docs/ARCHITECTURE.md"
+    },
+    {
+      "source": "files/docs/PROJECT_PLAN.md",
+      "target": "docs/PROJECT_PLAN.md"
+    },
+    {
+      "source": "files/docs/RISKS.md",
+      "target": "docs/RISKS.md"
+    },
+    {
+      "source": "files/docs/decisions/README.md",
+      "target": "docs/decisions/README.md"
+    }
+  ],
+  "config_patch": {
+    "project": {
+      "profile": "software"
+    }
+  }
+}

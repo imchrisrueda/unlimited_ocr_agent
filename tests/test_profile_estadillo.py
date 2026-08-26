@@ -210,6 +210,8 @@ class TestEstadilloProfileUnit(unittest.TestCase):
             self.assertTrue((doc_dir / "document.json").is_file())
             self.assertTrue((doc_dir / "pages").is_dir())
             self.assertTrue((doc_dir / "raw").is_dir())
+            self.assertTrue((doc_dir / "review").is_dir())
+            self.assertTrue((doc_dir / "review" / "issues.json").is_file())
 
             # Roundtrip de document.json
             loaded_doc = EstadilloDocument.model_validate_json((doc_dir / "document.json").read_text(encoding="utf-8"))
@@ -443,6 +445,9 @@ class TestEstadilloProfileUnit(unittest.TestCase):
         self.assertIn("'asistentes'", prompt)
         self.assertIn("'especies_declaradas'", prompt)
         self.assertIn("TODAS las filas", prompt)
+        self.assertIn("'bbox'", prompt)
+        self.assertIn("'field_bboxes'", prompt)
+        self.assertIn("CADA fila extraída", prompt)
 
     def test_profile_empty_and_populated_pages_handling(self):
         """Verifica que el pipeline procese de forma fiel y determinista páginas sin filas junto a páginas con registros usando DTO."""
@@ -539,6 +544,8 @@ class TestRealEstadilloProfileIntegration(unittest.TestCase):
             self.assertTrue((safe_dir / "document.json").is_file())
             self.assertTrue((safe_dir / "pages").is_dir())
             self.assertTrue((safe_dir / "raw").is_dir())
+            self.assertTrue((safe_dir / "review").is_dir())
+            self.assertTrue((safe_dir / "review" / "issues.json").is_file())
 
             # Verificar 6 páginas rasterizadas
             page_images = list((safe_dir / "pages").glob("*.png"))

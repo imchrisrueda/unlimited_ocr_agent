@@ -47,6 +47,8 @@ def normalize_species(doc: EstadilloDocument) -> EstadilloDocument:
                 else:
                     # No alterar ni adivinar: dejar normalized como None y emitir advertencia
                     row.especie.normalized = None
+                    col_val = row.col.normalized if row.col and row.col.normalized is not None else (row.col.raw if row.col else None)
+                    fil_val = row.fil.normalized if row.fil and row.fil.normalized is not None else (row.fil.raw if row.fil else None)
                     warning = ExtractionWarning(
                         code="UNRECOGNIZED_SPECIES",
                         message=f"Especie no reconocida en catálogo estándar: '{raw_val}'",
@@ -56,6 +58,8 @@ def normalize_species(doc: EstadilloDocument) -> EstadilloDocument:
                         details={
                             "raw": raw_val,
                             "row_id": row.id.raw if row.id and row.id.raw else None,
+                            "col": col_val,
+                            "fil": fil_val,
                         },
                     )
                     new_warnings.append(warning)

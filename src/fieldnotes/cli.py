@@ -1,5 +1,7 @@
 import argparse
+import json
 import os
+from pathlib import Path
 from typing import Optional
 from .pipeline import UnlimitedOCRAgent
 from .config import (
@@ -7,6 +9,7 @@ from .config import (
     get_lm_studio_text_model,
     get_lm_studio_legacy_model,
 )
+from .profiles.estadillo import safe_document_stem
 
 
 def build_parser():
@@ -195,9 +198,27 @@ def main(args=None):
 
         total_rows = sum(len(p.rows) for p in doc_result.pages)
         total_warnings = len(doc_result.warnings)
+
+        # Contar elementos que requieren revisión desde review/issues.json
+        review_issues_path = (
+            Path(parsed_args.output or "./output_ocr")
+            / safe_document_stem(parsed_args.file_path)
+            / "review"
+            / "issues.json"
+        )
+        total_review_items = 0
+        if review_issues_path.is_file():
+            try:
+                issues_data = json.loads(review_issues_path.read_text(encoding="utf-8"))
+                if isinstance(issues_data, list):
+                    total_review_items = len(issues_data)
+            except Exception:
+                total_review_items = 0
+
         print(
             f"\n[PERFIL ESTADILLO] Procesamiento completado: {total_rows} registros extraídos, "
-            f"{total_warnings} advertencias detectadas."
+            f"{total_warnings} advertencias detectadas, "
+            f"{total_review_items} elementos que requieren revisión."
         )
 
         print("\nRESPUESTA DEL AGENTE:")

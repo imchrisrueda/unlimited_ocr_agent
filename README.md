@@ -232,12 +232,39 @@ El perfil `--profile estadillo` implementa el flujo integral de digitalización 
 4. **Normalización auditable de especies** (`src/fieldnotes/normalization/estadillo.py`): Mapea variantes de catálogo (`Ap` $\rightarrow$ `P`, `Ah` $\rightarrow$ `H`, `Ar` $\rightarrow$ `R`, `Mz` $\rightarrow$ `M`) en `especie.normalized` conservando `especie.raw` inalterado. Valores no reconocidos o ambiguos (como `M2`) generan `UNRECOGNIZED_SPECIES` sin auto-corrección destructiva.
 5. **Validación de calidad** (`src/fieldnotes/validation/estadillo.py`): Detecta duplicados `(col, fil)`, discontinuidades en secuencias de filas, formatos BBCH inválidos y anomalías de altura emitiendo `ExtractionWarning`.
 6. **Renderizado Markdown determinista** (`src/fieldnotes/render/markdown.py`): Genera exactamente las **dos tablas Markdown obligatorias de `AGENTS.md`** (tabla 1: 3x2 con metadatos y `Especies: P;H;R;M` fija; tabla 2: 8 columnas con todos los registros en orden de procedencia).
-7. **Persistencia canónica atómica**: Guarda los resultados en `<output_dir>/<safe_stem>/` (`notebook.md`, `document.json`, `pages/`, `raw/`, `assets/`).
+7. **Sistema de revisión y crops visuales** (`src/fieldnotes/review/`): Agrega de forma pura y determinista las incertidumbres (`EvidenceValue.uncertain`, `alternatives`) y advertencias (`ExtractionWarning`) en objetos `ReviewIssue`, generando recortes visuales PNG confinados en `review/` únicamente cuando existe una región de evidencia normalizada válida.
+8. **Persistencia canónica atómica**: Guarda los resultados en `<output_dir>/<safe_stem>/` (`notebook.md`, `document.json`, `pages/`, `raw/`, `assets/`, `review/`).
 
-### Ejecución CLI con Perfil Estadillo
+## Sistema de Revisión: `ReviewIssue`, `issues.json` y Crops Visuales
+
+El sistema de revisión hace visibles y auditables las dudas o discrepancias detectadas durante la digitalización sin modificar los datos extraídos ni realizar auto-corrección destructiva:
+
+### Esquema `ReviewIssue` (`src/fieldnotes/schemas/review.py`)
+- `issue_id`: Identificador determinista, único y estable entre ejecuciones idénticas (sin UUID aleatorio ni timestamps).
+- `page`: Número de página fuente ($\ge 1$).
+- `field`: Campo afectado (ej: `especie`, `altura_cm`, `bbch`, `col,fil`, `objetivo`).
+- `row_key`: Clave textual conservadora derivada de las coordenadas o identificadores disponibles (ej: `col1_fil26`, `id_43`) o `null`.
+- `reason`: Motivo descriptivo de la incertidumbre o advertencia.
+- `candidates`: Lecturas o valores alternativos procedentes de `alternatives` o de la evidencia explícita (sin candidatos inventados).
+- `crop_path`: Ruta relativa POSIX (`review/p001_col1_fil26_altura_cm.png`) al recorte visual PNG de la celda o fila dudosa, o `null`.
+- `warning_code`: Código formal de la advertencia (`UNCERTAIN_EVIDENCE`, `UNRECOGNIZED_SPECIES`, `INVALID_BBCH_FORMAT`, `DUPLICATE_COORDINATES`, etc.).
+- `provenance`: Metadatos auditables de severidad y detalle original.
+
+### Significado de `crop_path: null`
+Un recorte PNG solo se genera cuando el DTO de extracción multimodal aporta una región visual explícita y válida (`NormalizedBBox` con $0.0 \le x_0 < x_1 \le 1.0$ e $0.0 \le y_0 < y_1 \le 1.0$). Si una advertencia o incertidumbre carece de coordenadas visuales válidas o afecta a la lógica global del documento, `crop_path` queda explícitamente como `null`. El sistema nunca genera coordenadas inventadas ni recortes aproximados engañosos.
+
+### Archivo `review/issues.json`
+Se crea siempre de forma atómica en el directorio canónico del documento. Si el documento no presenta ninguna incertidumbre ni advertencia, `review/issues.json` se persiste válidamente con una lista vacía `[]`.
+
+### Ejecución CLI con Perfil Estadillo e Informe de Revisión
 
 ```powershell
 .\.venv\Scripts\python.exe agent.py 26-05-06.pdf --profile estadillo --vision-model "qwen/qwen3.5-9b" --output ./output_ocr
+```
+
+Al finalizar, la CLI informa de forma concisa sobre los registros extraídos, las advertencias detectadas y el número de elementos que requieren revisión humana:
+```text
+[PERFIL ESTADILLO] Procesamiento completado: 156 registros extraídos, 3 advertencias detectadas, 3 elementos que requieren revisión.
 ```
 
 ### Prueba de integración real E2E (opt-in)

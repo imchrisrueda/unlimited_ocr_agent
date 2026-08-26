@@ -7,6 +7,14 @@ from typing import Optional, Union, Any, Tuple
 
 from src.fieldnotes.schemas.estadillo import EstadilloPage, EstadilloDocument
 from src.fieldnotes.schemas.dto import EstadilloPageDTO, dto_to_estadillo_page
+from src.fieldnotes.schemas.review import review_issues_to_json
+from src.fieldnotes.review.issues import (
+    extract_review_issues_from_document,
+    extract_invalid_region_issues,
+    deduplicate_and_sort_issues,
+    collect_dto_regions,
+)
+from src.fieldnotes.review.crops import generate_review_crops_for_issues
 from src.fieldnotes.merge.estadillo import merge_estadillo_pages
 from src.fieldnotes.normalization.estadillo import normalize_species
 from src.fieldnotes.validation.estadillo import validate_estadillo_document
@@ -38,10 +46,14 @@ INSTRUCCIONES DE EXTRACCIÓN:
      * 'bbch': Estado fenológico BBCH (p. ej. "22", "18", "25.2.5")
      * 'observaciones': Texto de observaciones o null si está en blanco
      * 'uncertain_fields': Lista de nombres de campos con caracteres dudosos/ilegibles (p. ej. ["altura_cm"]), o lista vacía []
+     * 'bbox': Bounding box OBLIGATORIO para CADA fila extraída relativo a las dimensiones TOTALES de la imagen completa. Usa ENTEROS en cuadrícula 0..1000 donde 0=borde superior/izquierdo y 1000=borde inferior/derecho de la imagen completa. Fórmula: x0=round(píxel_izquierdo*1000/ancho_imagen), y0=round(píxel_superior*1000/alto_imagen), x1=round(píxel_derecho*1000/ancho_imagen), y1=round(píxel_inferior*1000/alto_imagen). Todos los valores son ENTEROS en [0, 1000]. NUNCA generar números decimales, negativos ni coordenadas mayores a 1000. Ejemplo para página con cabecera y 20 filas: fila1={{x0:30,y0:220,x1:970,y1:270}}, fila10={{x0:30,y0:600,x1:970,y1:650}}, fila20={{x0:30,y0:940,x1:970,y1:990}}.
+     * 'field_bboxes': Mapa opcional {{campo: {{x0, y0, x1, y1}}}} con las mismas coordenadas enteras 0..1000 ÚNICAMENTE si una celda concreta es dudosa y requiere recorte específico; en caso contrario null.
 4. No inventes datos. Si un campo no es visible o está ausente, usa null.
 5. Si hay notas o anotaciones fuera de las tablas principales, captúralas en 'additional_text'; en caso contrario usa null.
-6. Devuelve exclusivamente el objeto JSON 'EstadilloPageDTO' con page_number={page_number}, sin Markdown ni bloques de razonamiento interno.
+6. Si detectas regiones dudosas adicionales que requieran verificación humana, puedes incluir objetos en 'regions' con {{field, row_key, bbox: {{x0, y0, x1, y1}}}} con las mismas coordenadas enteras 0..1000.
+7. Devuelve exclusivamente el objeto JSON 'EstadilloPageDTO' con page_number={page_number}, sin Markdown ni bloques de razonamiento interno.
 """
+
 
 ESTADILLO_DEFAULT_EXTRA_BODY: dict[str, Any] = {
     "chat_template_kwargs": {"enable_thinking": False},
@@ -151,7 +163,8 @@ class EstadilloProfile:
         6. Normalización auditable de especies.
         7. Validación determinista de calidad.
         8. Renderizado Markdown determinista de dos tablas.
-        9. Publicación atómica del directorio de staging a la ruta canónica con rollback.
+        9. Generación de ReviewIssues y crops visuales confinados en review/.
+        10. Publicación atómica del directorio de staging a la ruta canónica con rollback.
         """
         input_path = Path(file_path).resolve()
         if not input_path.exists():
@@ -190,9 +203,12 @@ class EstadilloProfile:
             staging_pages_dir = staging_dir / "pages"
             staging_raw_dir = staging_dir / "raw"
             staging_assets_dir = staging_dir / "assets"
+            staging_review_dir = staging_dir / "review"
+
             staging_pages_dir.mkdir(parents=True, exist_ok=True)
             staging_raw_dir.mkdir(parents=True, exist_ok=True)
             staging_assets_dir.mkdir(parents=True, exist_ok=True)
+            staging_review_dir.mkdir(parents=True, exist_ok=True)
 
             # Validar y copiar artefactos a staging
             for art in artifacts:
@@ -217,6 +233,8 @@ class EstadilloProfile:
 
             # 2. Sequential Compact VLM Extraction & Pure Canonical Conversion
             extracted_pages: list[EstadilloPage] = []
+            page_dtos: list[EstadilloPageDTO] = []
+
             for art in artifacts:
                 page_prompt = (
                     prompt
@@ -247,6 +265,9 @@ class EstadilloProfile:
                     **call_kwargs,
                 )
 
+                if isinstance(page_dto, EstadilloPageDTO):
+                    page_dtos.append(page_dto)
+
                 # Conversión determinista y pura al modelo canónico de dominio EstadilloPage
                 page_data = dto_to_estadillo_page(page_dto, page_number=art.page_number)
                 extracted_pages.append(page_data)
@@ -263,14 +284,36 @@ class EstadilloProfile:
             # 6. Pure Markdown Rendering (exact 2 tables of AGENTS.md)
             markdown_output = render_estadillo_markdown(validated_doc)
 
-            # 7. Escribir archivos finales en staging
+            # 7. Generación de ReviewIssues y Crops visuales confinados
+            review_issues = extract_review_issues_from_document(validated_doc)
+            invalid_region_issues = extract_invalid_region_issues(page_dtos)
+            if invalid_region_issues:
+                review_issues = deduplicate_and_sort_issues(review_issues + invalid_region_issues)
+            dto_regions = collect_dto_regions(page_dtos)
+
+            page_images = {
+                art.page_number: staging_pages_dir / f"page_{art.page_number:03d}{art.image_path.suffix.lower() if art.image_path else '.png'}"
+                for art in artifacts
+            }
+
+            review_issues = generate_review_crops_for_issues(
+                issues=review_issues,
+                page_images=page_images,
+                regions_map=dto_regions,
+                review_dir=staging_review_dir,
+                canonical_base_dir=staging_dir,
+            )
+
+            # 8. Escribir archivos finales en staging
             notebook_path = staging_dir / "notebook.md"
             document_json_path = staging_dir / "document.json"
+            issues_json_path = staging_review_dir / "issues.json"
 
             write_atomic_file(notebook_path, markdown_output)
             write_atomic_file(document_json_path, validated_doc.model_dump_json(indent=2))
+            write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
 
-            # 8. Publicación atómica de staging a canonical_dir con rollback
+            # 9. Publicación atómica de staging a canonical_dir con rollback
             if canonical_dir.exists():
                 backup_dir = (self.output_base_dir / f".backup_{stem}_{uuid.uuid4().hex}").resolve()
                 shutil.move(str(canonical_dir), str(backup_dir))

@@ -1,10 +1,138 @@
 import math
 from typing import Optional, Union
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from .evidence import EvidenceValue
 from .warnings import ExtractionWarning
 from .estadillo import EstadilloPage, EstadilloPageHeader, EstadilloRow
+from .review import NormalizedBBox
+
+_BBOX1000_MAX = 1000
+
+
+class CandidateVisualBBox1000(BaseModel):
+    """Bounding box entero candidato 0..1000 recibido de la respuesta VLM.
+
+    Permite parsear la extracción tabular completa incluso si el modelo comete
+    un error puntual en las coordenadas visuales opcionales (ej: y0 >= y1 o coords > 1000).
+    La validación geométrica rigurosa se realiza de forma aislada al recolectar
+    evidencia visual: si es válida se promueve a VisualBBox1000 y NormalizedBBox;
+    si es inválida se descarta deterministamente sin crop ni fallo de extracción.
+    """
+    x0: int = Field(..., description="Borde izquierdo candidato en cuadrícula 0..1000")
+    y0: int = Field(..., description="Borde superior candidato en cuadrícula 0..1000")
+    x1: int = Field(..., description="Borde derecho candidato en cuadrícula 0..1000")
+    y1: int = Field(..., description="Borde inferior candidato en cuadrícula 0..1000")
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class VisualBBox1000(CandidateVisualBBox1000):
+    """Bounding box validado en cuadrícula entera 0..1000 (0<=coords<=1000, x0<x1, y0<y1).
+
+    Garantiza estricta no degeneración y confinamiento en [0, 1000].
+    Conversión canónica: dividir cada campo entre 1000 → NormalizedBBox [0,1].
+    """
+    x0: int = Field(..., ge=0, le=_BBOX1000_MAX, description="Borde izquierdo en cuadrícula 0..1000")
+    y0: int = Field(..., ge=0, le=_BBOX1000_MAX, description="Borde superior en cuadrícula 0..1000")
+    x1: int = Field(..., ge=0, le=_BBOX1000_MAX, description="Borde derecho en cuadrícula 0..1000")
+    y1: int = Field(..., ge=0, le=_BBOX1000_MAX, description="Borde inferior en cuadrícula 0..1000")
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    @model_validator(mode="after")
+    def validate_box_order(self) -> "VisualBBox1000":
+        """Valida que x0<x1 y y0<y1 (caja estrictamente no degenerada)."""
+        if self.x0 >= self.x1:
+            raise ValueError(
+                f"VisualBBox1000: x0 ({self.x0}) debe ser estrictamente menor que x1 ({self.x1})."
+            )
+        if self.y0 >= self.y1:
+            raise ValueError(
+                f"VisualBBox1000: y0 ({self.y0}) debe ser estrictamente menor que y1 ({self.y1})."
+            )
+        return self
+
+
+def validate_visual_bbox1000(
+    candidate: Union[VisualBBox1000, CandidateVisualBBox1000, None]
+) -> Optional[VisualBBox1000]:
+    """Valida estrictamente un bounding box candidato 0..1000.
+
+    Requisitos para ser válido:
+    1. Instancia no nula.
+    2. Tipos enteros estrictos (no bool/str/float).
+    3. Límites en [0, 1000] inclusive.
+    4. Geometría estrictamente no degenerada: x0 < x1 e y0 < y1.
+
+    Si no cumple todas las condiciones, devuelve None (descarte determinista sin fallar la extracción).
+    """
+    if candidate is None:
+        return None
+    if isinstance(candidate, VisualBBox1000):
+        return candidate
+    # Verificar tipos enteros puros (en Python isinstance(True, int) es True)
+    if (
+        type(candidate.x0) is not int
+        or type(candidate.y0) is not int
+        or type(candidate.x1) is not int
+        or type(candidate.y1) is not int
+    ):
+        return None
+    # Verificar rango [0, 1000]
+    if not (
+        0 <= candidate.x0 <= _BBOX1000_MAX
+        and 0 <= candidate.y0 <= _BBOX1000_MAX
+        and 0 <= candidate.x1 <= _BBOX1000_MAX
+        and 0 <= candidate.y1 <= _BBOX1000_MAX
+    ):
+        return None
+    # Verificar orden estricto
+    if candidate.x0 >= candidate.x1 or candidate.y0 >= candidate.y1:
+        return None
+    return VisualBBox1000(
+        x0=candidate.x0,
+        y0=candidate.y0,
+        x1=candidate.x1,
+        y1=candidate.y1,
+    )
+
+
+def visual_bbox1000_to_normalized(
+    bbox: Union[VisualBBox1000, CandidateVisualBBox1000]
+) -> NormalizedBBox:
+    """Convierte de forma pura y determinista un VisualBBox1000 al NormalizedBBox canónico [0,1].
+
+    División exacta por 1000. No realiza clamp ni extrapolación.
+    Si se recibe un CandidateVisualBBox1000, se valida previamente. Lanza ValueError
+    si el bbox no cumple las invariantes geométricas y de rango.
+    """
+    valid_box = validate_visual_bbox1000(bbox)
+    if valid_box is None:
+        raise ValueError(
+            f"No se puede convertir a NormalizedBBox: VisualBBox1000 inválido o fuera de límites: {bbox}"
+        )
+    return NormalizedBBox(
+        x0=round(valid_box.x0 / _BBOX1000_MAX, 6),
+        y0=round(valid_box.y0 / _BBOX1000_MAX, 6),
+        x1=round(valid_box.x1 / _BBOX1000_MAX, 6),
+        y1=round(valid_box.y1 / _BBOX1000_MAX, 6),
+    )
+
+
+class VisualRegion1000DTO(BaseModel):
+    """Región visual en cuadrícula 1000 para el contrato VLM (transitoria, no canónica).
+
+    El VLM emite coordenadas enteras 0..1000 para las regiones de evidencia dudosa.
+    Se valida individualmente antes de generar ReviewIssue o crops.
+    """
+    page: Optional[int] = Field(default=None, ge=1, description="Número de página (debe coincidir con la página contenedora)")
+    field: Optional[str] = Field(default=None, description="Nombre del campo dudoso asociado (ej: 'altura_cm', 'especie')")
+    row_key: Optional[str] = Field(default=None, description="Clave de fila (ej: 'col1_fil26')")
+    row_index: Optional[int] = Field(default=None, ge=0, description="Índice de fila 0-based en la página")
+    bbox: CandidateVisualBBox1000 = Field(..., description="Coordenadas enteras 0..1000 de la región (relativas a imagen completa)")
+
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class EstadilloHeaderDTO(BaseModel):
@@ -15,6 +143,7 @@ class EstadilloHeaderDTO(BaseModel):
     equipamiento: Optional[str] = None
     situacion_atmosferica: Optional[str] = None
     especies_declaradas: Optional[str] = None
+    field_bboxes: Optional[dict[str, CandidateVisualBBox1000]] = None
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -30,6 +159,8 @@ class EstadilloRowDTO(BaseModel):
     bbch: Optional[Union[float, int, str]] = None
     observaciones: Optional[str] = None
     uncertain_fields: list[str] = Field(default_factory=list)
+    bbox: Optional[CandidateVisualBBox1000] = None
+    field_bboxes: Optional[dict[str, CandidateVisualBBox1000]] = None
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
@@ -41,8 +172,10 @@ class EstadilloPageDTO(BaseModel):
     rows: list[EstadilloRowDTO] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     additional_text: Optional[str] = None
+    regions: list[VisualRegion1000DTO] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", strict=True)
+
 
 
 _VALID_ROW_FIELDS = frozenset({

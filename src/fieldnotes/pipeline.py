@@ -2,13 +2,16 @@ import os
 from pathlib import Path
 import shutil
 import tempfile
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, TypeVar, Type
+from pydantic import BaseModel
 from .artifacts import PageArtifact
 from .config import setup_encoding, get_lm_studio_url, get_lm_studio_api_key, get_lm_studio_timeout
 from .ingest.pdf import extract_pdf_images, extract_pdf_page_artifacts
 from .ocr.worker import run_ocr_worker
 from .vlm.lmstudio import LMStudioClient
 from .export import export_to_markdown, export_to_pdf
+
+T = TypeVar("T", bound=BaseModel)
 
 setup_encoding()
 
@@ -271,6 +274,23 @@ class UnlimitedOCRAgent:
             **kwargs,
         )
 
+    def ask_vision_structured(
+        self,
+        image_path: str | Path,
+        prompt: str,
+        schema: Type[T],
+        ocr_context: Optional[str] = None,
+        **kwargs: Any,
+    ) -> T:
+        """Envía una consulta visual estructurada a LM Studio retornando una instancia tipada."""
+        return self.vlm.ask_vision_structured(
+            image_path=image_path,
+            prompt=prompt,
+            schema=schema,
+            ocr_context=ocr_context,
+            **kwargs,
+        )
+
     def ask_page_vision(
         self,
         page_artifact: PageArtifact,
@@ -281,6 +301,22 @@ class UnlimitedOCRAgent:
         return self.vlm.ask_vision(
             image_path=page_artifact.image_path,
             prompt=prompt,
+            ocr_context=page_artifact.raw_ocr,
+            **kwargs,
+        )
+
+    def ask_page_vision_structured(
+        self,
+        page_artifact: PageArtifact,
+        prompt: str,
+        schema: Type[T],
+        **kwargs: Any,
+    ) -> T:
+        """Envía la imagen y OCR de apoyo de un PageArtifact retornando una instancia tipada."""
+        return self.vlm.ask_vision_structured(
+            image_path=page_artifact.image_path,
+            prompt=prompt,
+            schema=schema,
             ocr_context=page_artifact.raw_ocr,
             **kwargs,
         )

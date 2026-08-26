@@ -1,8 +1,7 @@
 import base64
 import os
-import re
 from pathlib import Path
-from typing import Optional, Literal, Any
+from typing import Optional, Literal, Any, TypeVar, Type
 import openai
 from openai import (
     APIConnectionError,
@@ -11,61 +10,28 @@ from openai import (
     APIError,
     NotFoundError,
 )
+from pydantic import BaseModel
 from ..config import (
     get_lm_studio_vision_model,
     get_lm_studio_text_model,
     get_lm_studio_legacy_model,
     get_lm_studio_timeout,
 )
+from .errors import (
+    LMStudioError,
+    LMStudioConnectionError,
+    LMStudioModelNotConfiguredError,
+    LMStudioModelNotFoundError,
+    LMStudioResponseError,
+    LMStudioEmptyResponseError,
+    StructuredOutputError,
+    StructuredOutputParseError,
+    StructuredOutputValidationError,
+    sanitize_message,
+)
+from .structured import generate_json_schema, parse_structured_json
 
-
-class LMStudioError(Exception):
-    """Excepción base para todos los errores del cliente LM Studio."""
-    pass
-
-
-class LMStudioConnectionError(LMStudioError):
-    """Error al conectar con el servidor local de LM Studio o timeout de red."""
-    pass
-
-
-class LMStudioModelNotConfiguredError(LMStudioError):
-    """Error lanzado cuando no se ha configurado ningún modelo para la operación solicitada."""
-    pass
-
-
-class LMStudioModelNotFoundError(LMStudioError):
-    """Error lanzado cuando el modelo configurado no está disponible en el servidor LM Studio."""
-    pass
-
-
-class LMStudioResponseError(LMStudioError):
-    """Error devuelto por la API de OpenAI/LM Studio (status HTTP de error o payload inválido)."""
-    pass
-
-
-class LMStudioEmptyResponseError(LMStudioError):
-    """Error lanzado cuando el modelo devuelve contenido vacío (p. ej. consumido en razonamiento)."""
-    pass
-
-
-_RE_BASE64_DATA_URI = re.compile(r"data:image/[a-zA-Z0-9.+_-]+;base64,[A-Za-z0-9+/=]+", re.IGNORECASE)
-_RE_AUTH_BEARER = re.compile(r"(Bearer\s+)[A-Za-z0-9\-._~+/]+=*", re.IGNORECASE)
-_RE_API_KEY_VAL = re.compile(r"(api[_-]?key['\"]?\s*[:=]\s*['\"]?)[A-Za-z0-9\-._~+/]+(['\"]?)", re.IGNORECASE)
-_RE_SK_SECRET = re.compile(r"\b(sk-[A-Za-z0-9_-]{8,})\b")
-
-
-def sanitize_message(text: str, max_chars: int = 1000) -> str:
-    """Redacta claves API, tokens de autenticación y cadenas base64 de mensajes de error."""
-    if not isinstance(text, str):
-        text = str(text)
-    text = _RE_BASE64_DATA_URI.sub("data:image/[REDACTED_BASE64]", text)
-    text = _RE_AUTH_BEARER.sub(r"\1[REDACTED_TOKEN]", text)
-    text = _RE_API_KEY_VAL.sub(r"\1[REDACTED_API_KEY]\2", text)
-    text = _RE_SK_SECRET.sub("[REDACTED_SECRET]", text)
-    if len(text) > max_chars:
-        text = text[:max_chars] + "... [TRUNCATED]"
-    return text
+T = TypeVar("T", bound=BaseModel)
 
 
 def encode_image_to_data_uri(image_path: str | Path, max_bytes: int = 20 * 1024 * 1024) -> str:
@@ -412,6 +378,58 @@ class LMStudioClient:
 
         return self._execute_chat_completion(kwargs, resolved_model)
 
+    def ask_text_structured(
+        self,
+        prompt: str,
+        schema: Type[T],
+        context: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        reasoning_effort: str = "none",
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+    ) -> T:
+        """Envía una consulta textual estructurada y devuelve una instancia validada del esquema Pydantic."""
+        schema_format = generate_json_schema(schema)
+        raw_res = self.ask_text(
+            prompt=prompt,
+            context=context,
+            system_prompt=system_prompt,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format=schema_format,
+        )
+        return parse_structured_json(raw_res, schema)
+
+    def ask_vision_structured(
+        self,
+        image_path: str | Path,
+        prompt: str,
+        schema: Type[T],
+        ocr_context: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        reasoning_effort: str = "none",
+        max_tokens: int = 2048,
+        temperature: float = 0.2,
+    ) -> T:
+        """Envía una consulta visual estructurada y devuelve una instancia validada del esquema Pydantic."""
+        schema_format = generate_json_schema(schema)
+        raw_res = self.ask_vision(
+            image_path=image_path,
+            prompt=prompt,
+            ocr_context=ocr_context,
+            system_prompt=system_prompt,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            response_format=schema_format,
+        )
+        return parse_structured_json(raw_res, schema)
+
     def ask(
         self,
         document_text: str,
@@ -473,3 +491,21 @@ class LMStudioClient:
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
         )
+
+
+__all__ = [
+    "LMStudioClient",
+    "encode_image_to_data_uri",
+    "generate_json_schema",
+    "parse_structured_json",
+    "LMStudioError",
+    "LMStudioConnectionError",
+    "LMStudioModelNotConfiguredError",
+    "LMStudioModelNotFoundError",
+    "LMStudioResponseError",
+    "LMStudioEmptyResponseError",
+    "StructuredOutputError",
+    "StructuredOutputParseError",
+    "StructuredOutputValidationError",
+    "sanitize_message",
+]

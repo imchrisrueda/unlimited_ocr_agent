@@ -194,3 +194,31 @@ $env:RUN_LMSTUDIO_VISION_INTEGRATION="1"
 $env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
 .\.venv\Scripts\python.exe -m unittest tests.test_vlm.TestRealLMStudioVisionIntegration.test_real_lmstudio_vision_query -v
 ```
+
+3. **Integración estructurada con LM Studio (Structured Outputs con Pydantic)**:
+```powershell
+$env:RUN_LMSTUDIO_STRUCTURED_INTEGRATION="1"
+$env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
+.\.venv\Scripts\python.exe -m unittest tests.test_structured.TestRealLMStudioStructuredIntegration.test_real_lmstudio_structured_query -v
+```
+
+## Esquemas Tipados y Structured Outputs
+
+El módulo `src/fieldnotes/schemas/` introduce esquemas Pydantic v2 (`pydantic>=2.12.0,<3.0.0`) con política estricta (`extra="forbid"`):
+- `EvidenceValue[T]`: contenedor genérico para preservar el valor crudo (`raw`), el valor tipado (`normalized`), la página fuente (`source_page >= 1`), la incertidumbre (`uncertain`) y lecturas alternativas (`alternatives`).
+- `ExtractionWarning`: representación tipada de advertencias con campo `details` restringido a tipos JSON.
+- `BlockIR`, `PageIR`, `DocumentIR`: representación intermedia independiente del formato de salida.
+- `EstadilloHeader`, `EstadilloRow`, `EstadilloPage`, `EstadilloDocument`: contratos tipados para digitalización estructurada de notas de campo.
+
+Para consultas estructuradas directas:
+```python
+from src.fieldnotes.vlm.lmstudio import LMStudioClient
+from src.fieldnotes.schemas.estadillo import EstadilloPage
+
+client = LMStudioClient(base_url="http://localhost:1234/v1", api_key="lm-studio", vision_model="qwen/qwen3.5-9b")
+pagina: EstadilloPage = client.ask_vision_structured(
+    image_path="page_001.png",
+    prompt="Extrae la tabla de notas de campo visible en la imagen.",
+    schema=EstadilloPage,
+)
+```

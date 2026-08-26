@@ -2,9 +2,9 @@
 # Project status
 
 - Profile: software
-- Phase: reviewing
+- Phase: executing
 - Current milestone: none
-- Active tasks: 0
+- Active tasks: 1
 - Blocked tasks: 0
 - Awaiting review: 0
 - Accepted tasks: 1

@@ -15,4 +15,4 @@
 
 ## Next
 
-No queued tasks.
+- TASK-0007: Sistema de revisión: issues auditables y crops visuales [BACKLOG]

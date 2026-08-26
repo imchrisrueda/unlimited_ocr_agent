@@ -1,7 +1,9 @@
-import unittest
+﻿import unittest
 import tempfile
 import os
+import sys
 import shutil
+import subprocess
 from pathlib import Path
 from src.fieldnotes.artifacts import PageArtifact
 from src.fieldnotes.ocr.unlimited import split_page_blocks, process_page_artifacts
@@ -236,6 +238,68 @@ class TestRealOCRIntegration(unittest.TestCase):
         finally:
             if os.path.exists(test_dir):
                 shutil.rmtree(test_dir)
+
+
+class TestRealOCRWorkerIntegration(unittest.TestCase):
+    @unittest.skipUnless(
+        os.getenv("RUN_OCR_WORKER_INTEGRATION") == "1",
+        "Prueba de integración real con worker desactivada por defecto; requiere RUN_OCR_WORKER_INTEGRATION=1",
+    )
+    def test_real_ocr_worker_pipeline_on_pdf(self):
+        sample_pdf = "26-05-06.pdf"
+        if not os.path.exists(sample_pdf):
+            self.skipTest(f"Archivo {sample_pdf} no encontrado.")
+
+        # Ejecutar en un subproceso padre limpio para verificar sys.modules y recursos
+        code = (
+            "import os, sys, shutil, tempfile, time, subprocess\n"
+            "assert 'torch' not in sys.modules, 'torch presente antes de iniciar'\n"
+            "assert 'transformers' not in sys.modules, 'transformers presente antes de iniciar'\n"
+            "\n"
+            "# Medición inicial de VRAM si nvidia-smi está disponible\n"
+            "baseline_vram_mb = None\n"
+            "try:\n"
+            "    smi = subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,nounits,noheader'], capture_output=True, text=True)\n"
+            "    if smi.returncode == 0 and smi.stdout.strip():\n"
+            "        baseline_vram_mb = float(smi.stdout.strip().splitlines()[0])\n"
+            "except Exception:\n"
+            "    pass\n"
+            "\n"
+            "from src.fieldnotes.pipeline import UnlimitedOCRAgent\n"
+            "test_dir = tempfile.mkdtemp()\n"
+            "try:\n"
+            "    agent = UnlimitedOCRAgent(output_dir=test_dir, ocr_mode='worker')\n"
+            "    assert 'torch' not in sys.modules, 'torch importado por UnlimitedOCRAgent'\n"
+            "    t0 = time.perf_counter()\n"
+            "    text = agent.extract_from_pdf('" + sample_pdf.replace("\\", "/") + "')\n"
+            "    duration = time.perf_counter() - t0\n"
+            "    assert 'torch' not in sys.modules, 'torch importado tras extract_from_pdf en modo worker'\n"
+            "    assert len(text) > 0, 'Texto OCR vacío'\n"
+            "    assert len(agent.page_artifacts) == 6, f'Esperadas 6 páginas, obtenidas {len(agent.page_artifacts)}'\n"
+            "    doc_path = os.path.join(agent.output_dir, 'raw', 'document.md')\n"
+            "    assert os.path.exists(doc_path), 'raw/document.md no existe'\n"
+            "\n"
+            "    # Comprobar VRAM tras terminación del worker (tolerancia máxima 256 MiB o 5%)\n"
+            "    after_vram_mb = None\n"
+            "    if baseline_vram_mb is not None:\n"
+            "        smi_after = subprocess.run(['nvidia-smi', '--query-gpu=memory.used', '--format=csv,nounits,noheader'], capture_output=True, text=True)\n"
+            "        if smi_after.returncode == 0 and smi_after.stdout.strip():\n"
+            "            after_vram_mb = float(smi_after.stdout.strip().splitlines()[0])\n"
+            "            diff_mb = after_vram_mb - baseline_vram_mb\n"
+            "            assert diff_mb <= 256.0 or (after_vram_mb / max(baseline_vram_mb, 1.0)) <= 1.05, f'VRAM no liberada dentro de tolerancia: baseline={baseline_vram_mb}MB, after={after_vram_mb}MB, diff={diff_mb}MB'\n"
+            "\n"
+            "    agent.cleanup()\n"
+            "    print(f'WORKER_INTEGRATION_SUCCESS duration={duration:.2f}s pages={len(agent.page_artifacts)} baseline_vram={baseline_vram_mb}MB after_vram={after_vram_mb}MB')\n"
+            "finally:\n"
+            "    if os.path.exists(test_dir):\n"
+            "        shutil.rmtree(test_dir)\n"
+        )
+        proc = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+        print(proc.stdout)
+        if proc.stderr:
+            sys.stderr.write(proc.stderr)
+        self.assertEqual(proc.returncode, 0, f"Error en integración worker: {proc.stderr}")
+        self.assertIn("WORKER_INTEGRATION_SUCCESS", proc.stdout)
 
 
 if __name__ == "__main__":

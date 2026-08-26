@@ -65,13 +65,33 @@ También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en u
   - `artifacts.py`: estructura `PageArtifact` y estado auditable (`pending`, `mapped`, `unaligned`).
   - `ingest/pdf.py`: rasterizado de páginas a `pages/page_001.png` y wrappers compatibles.
   - `ocr/unlimited.py`: inferencia OCR, particionado determinista de bloques `<PAGE>` y persistencia en `raw/`.
-  - `pipeline.py`: orquestador `UnlimitedOCRAgent` con preservación de compatibilidad agregada.
-  - `config.py`: configuración de entorno y codificación.
+  - `ocr/worker.py`: subproceso aislado de inferencia OCR, protocolo IPC determinista y excepciones tipadas.
+  - `pipeline.py`: orquestador `UnlimitedOCRAgent` con soporte de `ocr_mode` (`worker` e `in_process`).
+  - `config.py`: configuración de entorno, timeout del worker y codificación.
   - `export.py`: exportación a Markdown y PDF.
   - `cli.py`: interfaz de línea de comandos.
 - `setup_env.py`: detección de hardware e instalación de PyTorch.
 - `requirements.txt`: dependencias Python.
 - `26-05-06.pdf`: documento de prueba incluido en el repositorio.
+
+## Arquitectura de ejecución y liberación de VRAM
+
+En sistemas con 12 GB de VRAM (NVIDIA RTX 4070 Ti), `Unlimited-OCR` y `Qwen 3.5 9B` (vía LM Studio) se ejecutan de forma estrictamente secuencial:
+1. **Rasterizado**: El proceso padre convierte el PDF a imágenes en `pages/page_001.png...`.
+2. **Inferencia OCR aislada**: Por defecto (`ocr_mode="worker"`), se lanza un subproceso hijo independiente mediante `subprocess` (`shell=False`).
+3. **Liberación de VRAM**: Al completar la extracción, el proceso worker finaliza y el sistema operativo reclama la memoria CUDA. El proceso padre nunca importa `torch` ni `transformers` en este modo.
+4. **Procesamiento VLM**: El proceso padre lee el texto extraído desde `result.md` e interactúa con LM Studio con la GPU disponible.
+
+### Protocolo IPC determinista
+La comunicación entre padre e hijo se gestiona dentro del subdirectorio temporal del run en `output_ocr/run_xxx/ipc/`:
+- `worker_request_<id>.json`: parámetros de entrada con un `request_id` único e impredecible.
+- `worker_response_<id>.json`: metadatos de respuesta (`result_path`, estado de mapeo y errores) sin duplicar `raw_text` en el JSON, escrito mediante reemplazo atómico (`os.replace`).
+- `worker_<id>_stdout.log` y `worker_<id>_stderr.log`: captura y persistencia completa de flujos de salida del worker.
+
+### Modos de ejecución (`ocr_mode`)
+- `--ocr-mode worker` (por defecto): Inferencia en subproceso aislado. Las propiedades del modelo PyTorch (`agent.model`, `agent.tokenizer`, `agent.device`, `agent.dtype`) no están instanciadas en el proceso padre y su acceso lanza un `RuntimeError` informativo.
+- `--ocr-mode in_process`: Ejecuta `UnlimitedOCR` directamente en el proceso principal, preservando la delegación de acceso a las propiedades del modelo para desarrollo o depuración.
+- `--worker-timeout <segundos>` / `OCR_WORKER_TIMEOUT`: Tiempo límite de espera para el subproceso OCR (por defecto 1800 s para permitir la descarga inicial del modelo).
 
 ## Uso adecuado y límites
 
@@ -89,6 +109,7 @@ Durante la inferencia se generan artefactos estructurados dentro del subdirector
 - `raw/`:
   - `document.md`: copia textual exacta e inalterada de `result.md`.
   - `page_001.md`, `page_002.md`, ...: OCR de cada página cuando el mapeo de bloques `<PAGE>` es unívoco y exacto (`ocr_mapping_status="mapped"`).
+- `ipc/`: archivos de petición, respuesta atómica y logs correlacionados por `request_id`.
 - `result.md` y cajas de detección (`result_with_boxes_N.jpg`).
 
 Si el conteo de bloques difiere o existe texto antes del primer delimitador `<PAGE>`, el mapeo se declara `unaligned` con registro de error auditable y se conserva únicamente `raw/document.md`, evitando asignaciones parciales o erróneas.
@@ -140,15 +161,15 @@ Para consultas posteriores a OCR, el agente envía `reasoning_effort="none"` por
 
 ## Tests y Validación
 
-Ejecución de la suite de tests unitarios offline:
+Ejecución de la suite completa de tests unitarios offline:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Para ejecutar opcionalmente la prueba de integración con el modelo OCR real (requiere GPU con CUDA y el PDF de prueba):
+Para ejecutar opcionalmente la prueba de integración con el worker OCR real y liberación de VRAM (requiere GPU con CUDA y el PDF de prueba):
 
 ```powershell
-$env:RUN_OCR_INTEGRATION="1"
+$env:RUN_OCR_WORKER_INTEGRATION="1"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```

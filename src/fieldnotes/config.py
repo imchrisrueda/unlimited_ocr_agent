@@ -13,3 +13,11 @@ def get_lm_studio_url():
 
 def get_lm_studio_api_key():
     return os.getenv("LM_STUDIO_API_KEY", "lm-studio")
+
+def get_ocr_worker_timeout() -> int:
+    val = os.getenv("OCR_WORKER_TIMEOUT", "1800")
+    try:
+        timeout = int(val)
+        return timeout if timeout > 0 else 1800
+    except (ValueError, TypeError):
+        return 1800

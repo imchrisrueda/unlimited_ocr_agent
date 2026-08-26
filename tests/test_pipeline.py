@@ -1,8 +1,11 @@
-﻿import unittest
+import unittest
 from unittest.mock import patch, MagicMock
 import tempfile
 import os
+from pathlib import Path
 import shutil
+from src.fieldnotes.artifacts import PageArtifact
+
 
 class TestPipeline(unittest.TestCase):
     def setUp(self):
@@ -81,23 +84,37 @@ class TestPipeline(unittest.TestCase):
         mock_ocr_instance.extract_from_image.return_value = "image text"
         self.assertEqual(agent.extract_from_image("img.png"), "image text")
         mock_ocr_instance.extract_from_image.assert_called_once_with("img.png")
+        self.assertEqual(len(agent.page_artifacts), 1)
+        self.assertEqual(agent.page_artifacts[0].raw_ocr, "image text")
+        self.assertEqual(agent.page_artifacts[0].ocr_mapping_status, "mapped")
         agent.cleanup()
 
-    @patch('src.fieldnotes.pipeline.extract_pdf_images')
+    @patch('src.fieldnotes.pipeline.extract_pdf_page_artifacts')
     @patch('src.fieldnotes.pipeline.UnlimitedOCR')
     @patch('src.fieldnotes.pipeline.LMStudioClient')
     def test_extract_pdf_delegation(self, mock_lmstudio, mock_ocr, mock_pdf_extract):
         mock_ocr_instance = MagicMock()
         mock_ocr.return_value = mock_ocr_instance
-        mock_pdf_extract.return_value = ["page1.png"]
-        mock_ocr_instance.extract_from_images.return_value = "pdf text"
+        art1 = PageArtifact(page_number=1, image_path=Path(self.test_dir) / "pages/page_001.png")
+        mock_pdf_extract.return_value = [art1]
+        mock_ocr_instance.extract_from_images.return_value = "<PAGE>pdf text"
+        mapped_art1 = PageArtifact(
+            page_number=1,
+            image_path=art1.image_path,
+            raw_ocr="pdf text",
+            ocr_mapping_status="mapped",
+        )
+        mock_ocr_instance.process_page_artifacts.return_value = [mapped_art1]
 
         from src.fieldnotes.pipeline import UnlimitedOCRAgent
         agent = UnlimitedOCRAgent(output_dir=self.test_dir)
 
-        self.assertEqual(agent.extract_from_pdf("doc.pdf"), "pdf text")
+        res = agent.extract_from_pdf("doc.pdf")
+        self.assertEqual(res, "<PAGE>pdf text")
         mock_pdf_extract.assert_called_once_with("doc.pdf", agent.output_dir)
-        mock_ocr_instance.extract_from_images.assert_called_once_with(["page1.png"])
+        mock_ocr_instance.extract_from_images.assert_called_once_with([str(art1.image_path)])
+        mock_ocr_instance.process_page_artifacts.assert_called_once_with([art1], "<PAGE>pdf text")
+        self.assertEqual(agent.page_artifacts, [mapped_art1])
         agent.cleanup()
 
     @patch('src.fieldnotes.pipeline.UnlimitedOCR')
@@ -124,11 +141,42 @@ class TestPipeline(unittest.TestCase):
         agent.ask_lmstudio = MagicMock(side_effect=["partial1", "partial2", "final_synthesis"])
 
         text = "a" * 1000
-        res = agent.ask_lmstudio_chunked(text, "Summarize", chunk_size=600, chunk_overlap=100, reasoning_effort="none", max_tokens=100)
+        res = agent.ask_lmstudio_chunked(
+            text, "Summarize", chunk_size=600, chunk_overlap=100, reasoning_effort="none", max_tokens=100
+        )
 
         self.assertEqual(res, "final_synthesis")
         self.assertEqual(agent.ask_lmstudio.call_count, 3)
         agent.cleanup()
+
+    @patch('fitz.open')
+    def test_extract_pdf_page_artifacts_and_wrapper(self, mock_fitz_open):
+        mock_doc = MagicMock()
+        mock_page1 = MagicMock()
+        mock_pix1 = MagicMock()
+        mock_page1.get_pixmap.return_value = mock_pix1
+        mock_page2 = MagicMock()
+        mock_pix2 = MagicMock()
+        mock_page2.get_pixmap.return_value = mock_pix2
+
+        mock_doc.__iter__.return_value = [mock_page1, mock_page2]
+        mock_fitz_open.return_value = mock_doc
+
+        from src.fieldnotes.ingest.pdf import extract_pdf_page_artifacts, extract_pdf_images
+
+        artifacts = extract_pdf_page_artifacts("doc.pdf", self.test_dir)
+        self.assertEqual(len(artifacts), 2)
+        self.assertEqual(artifacts[0].page_number, 1)
+        self.assertEqual(artifacts[0].image_path.name, "page_001.png")
+        self.assertEqual(artifacts[1].page_number, 2)
+        self.assertEqual(artifacts[1].image_path.name, "page_002.png")
+
+        # Probar wrapper extract_pdf_images
+        img_paths = extract_pdf_images("doc.pdf", self.test_dir)
+        self.assertEqual(len(img_paths), 2)
+        self.assertTrue(isinstance(img_paths[0], str))
+        self.assertTrue(img_paths[0].endswith("page_001.png"))
+
 
 if __name__ == '__main__':
     unittest.main()

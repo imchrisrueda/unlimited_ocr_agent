@@ -1,13 +1,16 @@
 import os
+from pathlib import Path
 import shutil
 import tempfile
+from .artifacts import PageArtifact
 from .config import setup_encoding, get_lm_studio_url, get_lm_studio_api_key
 from .ocr.unlimited import UnlimitedOCR
-from .ingest.pdf import extract_pdf_images
+from .ingest.pdf import extract_pdf_images, extract_pdf_page_artifacts
 from .vlm.lmstudio import LMStudioClient
 from .export import export_to_markdown, export_to_pdf
 
 setup_encoding()
+
 
 class UnlimitedOCRAgent:
     def __init__(self, model_name="baidu/Unlimited-OCR", output_dir="./output_ocr", lm_model=None):
@@ -15,13 +18,14 @@ class UnlimitedOCRAgent:
         self.base_output_dir = output_dir
         os.makedirs(self.base_output_dir, exist_ok=True)
         self.output_dir = tempfile.mkdtemp(prefix="run_", dir=self.base_output_dir)
-        # Inicializar submódulos usando una variable local primero
+        self.page_artifacts: list[PageArtifact] = []
+
         initial_lm_model = lm_model or os.getenv("LM_STUDIO_MODEL")
         self.ocr = UnlimitedOCR(model_name=self.model_name, output_dir=self.output_dir)
         self.vlm = LMStudioClient(
             base_url=get_lm_studio_url(),
             api_key=get_lm_studio_api_key(),
-            default_model=initial_lm_model
+            default_model=initial_lm_model,
         )
 
     @property
@@ -79,13 +83,31 @@ class UnlimitedOCRAgent:
 
     def extract_from_image(self, image_path: str) -> str:
         """Extrae el contenido de una imagen usando Unlimited-OCR."""
-        return self.ocr.extract_from_image(image_path)
+        raw_text = self.ocr.extract_from_image(image_path)
+        self.page_artifacts = [
+            PageArtifact(
+                page_number=1,
+                image_path=Path(image_path),
+                raw_ocr=raw_text,
+                ocr_mapping_status="mapped",
+                mapping_error=None,
+            )
+        ]
+        return raw_text
 
     def extract_from_pdf(self, pdf_path: str) -> str:
         """Convierte páginas del PDF a imágenes y extrae su texto."""
         print(f"Procesando documento PDF: {pdf_path}")
-        image_paths = extract_pdf_images(pdf_path, self.output_dir)
-        return self.ocr.extract_from_images(image_paths)
+        artifacts = extract_pdf_page_artifacts(pdf_path, self.output_dir)
+        image_paths = [str(a.image_path) for a in artifacts]
+        raw_text = self.ocr.extract_from_images(image_paths)
+        self.page_artifacts = self.ocr.process_page_artifacts(artifacts, raw_text)
+        return raw_text
+
+    def extract_page_artifacts_from_pdf(self, pdf_path: str) -> list[PageArtifact]:
+        """Procesa un PDF y retorna la lista de PageArtifacts con su estado y OCR."""
+        self.extract_from_pdf(pdf_path)
+        return self.page_artifacts
 
     def _resolve_lm_model(self) -> str:
         """Obtiene el identificador de un modelo de texto disponible en LM Studio."""

@@ -1,16 +1,34 @@
 import os
+from pathlib import Path
+from ..artifacts import PageArtifact
 
-def extract_pdf_images(pdf_path: str, output_dir: str) -> list[str]:
-    """Convierte páginas del PDF a imágenes."""
+
+def extract_pdf_page_artifacts(pdf_path: str, output_dir: str) -> list[PageArtifact]:
+    """Convierte páginas del PDF a imágenes estructuradas y retorna lista de PageArtifact."""
     import fitz  # PyMuPDF
     doc = fitz.open(pdf_path)
-    pdf_img_dir = os.path.join(output_dir, "pdf_pages")
-    os.makedirs(pdf_img_dir, exist_ok=True)
-    image_paths = []
+    pages_dir = os.path.join(output_dir, "pages")
+    os.makedirs(pages_dir, exist_ok=True)
+    artifacts: list[PageArtifact] = []
     for i, page in enumerate(doc):
+        page_number = i + 1
+        img_path = Path(pages_dir) / f"page_{page_number:03d}.png"
         pix = page.get_pixmap(dpi=300)
-        img_path = os.path.join(pdf_img_dir, f"page_{i+1}.png")
-        pix.save(img_path)
-        image_paths.append(img_path)
+        pix.save(str(img_path))
+        artifacts.append(
+            PageArtifact(
+                page_number=page_number,
+                image_path=img_path,
+                raw_ocr=None,
+                ocr_mapping_status="pending",
+                mapping_error=None,
+            )
+        )
     doc.close()
-    return image_paths
+    return artifacts
+
+
+def extract_pdf_images(pdf_path: str, output_dir: str) -> list[str]:
+    """Wrapper retrocompatible que convierte páginas del PDF a imágenes y retorna rutas como list[str]."""
+    artifacts = extract_pdf_page_artifacts(pdf_path, output_dir)
+    return [str(artifact.image_path) for artifact in artifacts]

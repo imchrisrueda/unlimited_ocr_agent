@@ -32,7 +32,7 @@ Convertir un documento a Markdown usando únicamente el OCR:
 .\.venv\Scripts\python.exe agent.py documento.pdf --raw --export-md resultado.md
 ```
 
-La opción `--raw` devuelve directamente el Markdown generado por Unlimited-OCR, sin consultar LM Studio. Para una imagen se utiliza `infer` con `save_results=True`. Para un PDF, el agente rasteriza las páginas a 300 DPI y utiliza `infer_multi`, que es el flujo recomendado por el proyecto oficial para parsing multipágina. Se activan los parámetros de prevención de repetición recomendados por el modelo (`no_repeat_ngram_size=35` y `ngram_window=1024` en documentos multipágina).
+La opción `--raw` devuelve directamente el Markdown generado por Unlimited-OCR, sin consultar LM Studio. Para una imagen se utiliza `infer` con `save_results=True`. Para un PDF, el agente rasteriza las páginas a 300 DPI en `pages/page_001.png` y utiliza `infer_multi`, que es el flujo recomendado por el proyecto oficial para parsing multipágina. Se activan los parámetros de prevención de repetición recomendados por el modelo (`no_repeat_ngram_size=35` y `ngram_window=1024` en documentos multipágina).
 
 Ejemplo con el documento incluido en este repositorio:
 
@@ -61,7 +61,14 @@ También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en u
 ## Estructura
 
 - `agent.py`: wrapper y entrypoint retrocompatible.
-- `src/fieldnotes/`: código refactorizado por fases (config, ingest, ocr, vlm, pipeline, export, cli).
+- `src/fieldnotes/`: código modularizado:
+  - `artifacts.py`: estructura `PageArtifact` y estado auditable (`pending`, `mapped`, `unaligned`).
+  - `ingest/pdf.py`: rasterizado de páginas a `pages/page_001.png` y wrappers compatibles.
+  - `ocr/unlimited.py`: inferencia OCR, particionado determinista de bloques `<PAGE>` y persistencia en `raw/`.
+  - `pipeline.py`: orquestador `UnlimitedOCRAgent` con preservación de compatibilidad agregada.
+  - `config.py`: configuración de entorno y codificación.
+  - `export.py`: exportación a Markdown y PDF.
+  - `cli.py`: interfaz de línea de comandos.
 - `setup_env.py`: detección de hardware e instalación de PyTorch.
 - `requirements.txt`: dependencias Python.
 - `26-05-06.pdf`: documento de prueba incluido en el repositorio.
@@ -74,17 +81,26 @@ También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en u
 - La conversión a PDF de este proyecto es una exportación visual del texto Markdown; no reconstruye automáticamente un PDF editable con el diseño original.
 
 La implementación se basa en la [documentación oficial de Unlimited-OCR](https://github.com/baidu/Unlimited-OCR), que distingue explícitamente entre `infer` para una imagen y `infer_multi` para varias páginas.
-## Archivos intermedios
 
-Durante la inferencia se generan imágenes de las páginas, resultados raw y, en ocasiones, imágenes con cajas de detección dentro de un subdirectorio temporal de `output_ocr`. Son útiles para depurar el OCR, revisar el reconocimiento visual o conservar evidencias de una ejecución, pero no son necesarios después de exportar el Markdown o el PDF.
+## Archivos intermedios y artefactos por página
 
-Por defecto, el agente elimina ese subdirectorio al finalizar. Para conservarlo durante una ejecución concreta:
+Durante la inferencia se generan artefactos estructurados dentro del subdirectorio temporal del run en `output_ocr`:
+- `pages/`: imágenes rasterizadas de cada página (`page_001.png`, `page_002.png`, ...).
+- `raw/`:
+  - `document.md`: copia textual exacta e inalterada de `result.md`.
+  - `page_001.md`, `page_002.md`, ...: OCR de cada página cuando el mapeo de bloques `<PAGE>` es unívoco y exacto (`ocr_mapping_status="mapped"`).
+- `result.md` y cajas de detección (`result_with_boxes_N.jpg`).
+
+Si el conteo de bloques difiere o existe texto antes del primer delimitador `<PAGE>`, el mapeo se declara `unaligned` con registro de error auditable y se conserva únicamente `raw/document.md`, evitando asignaciones parciales o erróneas.
+
+Por defecto, el agente elimina el subdirectorio temporal al finalizar. Para conservarlo durante una ejecución concreta:
 
 ```powershell
 .\.venv\Scripts\python.exe agent.py documento.pdf --raw --export-md resultado.md --keep-intermediate
 ```
 
 Las rutas indicadas mediante `--export-md` y `--export-pdf` se conservan; solo se limpia el subdirectorio temporal de esa ejecución.
+
 ## Configuración de LM Studio
 
 El agente consulta `/v1/models` y selecciona automáticamente el primer modelo de texto disponible. También puedes fijar el modelo explícitamente:
@@ -121,3 +137,18 @@ python agent.py documento.pdf "Realiza un resumen analítico global" --reasoning
 El agente analiza cada fragmento y realiza una última llamada de síntesis. `--chunk-size` y `--chunk-overlap` se expresan en caracteres. Este modo aumenta el tiempo y el número de llamadas, pero evita depender de una única ventana de contexto para documentos extensos.
 
 Para consultas posteriores a OCR, el agente envía `reasoning_effort="none"` por defecto. Esto evita que modelos como Gemma consuman todo el límite de salida en `reasoning_content` y devuelvan `content` vacío. Si LM Studio devuelve una respuesta sin contenido, el terminal muestra una ayuda indicando esta causa y las alternativas: usar un modelo no razonador o aumentar el límite de tokens.
+
+## Tests y Validación
+
+Ejecución de la suite de tests unitarios offline:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Para ejecutar opcionalmente la prueba de integración con el modelo OCR real (requiere GPU con CUDA y el PDF de prueba):
+
+```powershell
+$env:RUN_OCR_INTEGRATION="1"
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```

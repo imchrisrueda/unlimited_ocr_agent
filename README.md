@@ -353,3 +353,74 @@ Opciones principales:
 La evaluación comparativa sobre el dataset de prueba refleja las diferencias estructurales entre ambos enfoques:
 1. **Unlimited-OCR directo (`ocr_only`):** Funciona como extractor base rápido, pero en tablas manuscritas o complejas presenta errores de desplazamiento de columnas, confusión en dígitos BBCH manuscritos (p. ej. `53` vs `58`) y especies sin normalizar (`Ap`, `Mz`).
 2. **Unlimited-OCR + Qwen 3.5 9B (`ocr_plus_vlm`):** Al utilizar la imagen original como fuente primaria de evidencia y el OCR como hipótesis auxiliar estructurada mediante esquemas Pydantic, corrige desplazamientos de columnas, normaliza especies canónicamente y resuelve códigos fenológicos BBCH ambiguos con mayor exactitud.
+
+## DiagramIR: Representación Intermedia Estructurada y Auditable (PR 9)
+
+El módulo `src/fieldnotes/diagrams/` y el esquema `src/fieldnotes/schemas/diagram.py` introducen **DiagramIR**, una representación intermedia estructurada, auditable y tipada para digitalizar croquis de campo, diagramas de flujo y esquemas GPS sin generar código gráfico directo (SVG o Mermaid).
+
+### Principios Arquitectónicos de DiagramIR
+
+1. **Separación entre Estructura y Renderizado:** Los diagramas se representan primero como datos semánticos estructurados (`diagram.json`). El renderizado gráfico (Mermaid para flowcharts y SVG para croquis) corresponde exclusivamente a **PR 10**.
+2. **Tipos Soportados:** `diagram_type` acepta exactamente:
+   - `field_sketch`: Croquis de campo y parcelas experimentales.
+   - `flowchart`: Diagramas de flujo y protocolos de decisión.
+   - `gps_sketch`: Esquemas de ubicación de puntos y vértices GPS.
+3. **Contrato de Prompt para VLM:** Se solicita a Qwen 3.5 9B structured JSON únicamente (`DiagramDTO`), prohibiendo explícitamente generar SVG/Mermaid, inferir relaciones o inventar coordenadas.
+
+> [!WARNING]
+> **Distinción Crítica: Coordenadas Visuales Frente a Coordenadas GPS**
+> - **Coordenadas Visuales (`Point2D` / `BoundingBox2D`):** Valores normalizados flotantes estrictos en $[0.0, 1.0]$ donde $(0,0)$ es la esquina superior izquierda y $(1,1)$ la inferior derecha. Representan **ÚNICAMENTE la posición gráfica dentro del dibujo** y **JAMÁS deben interpretarse como coordenadas GPS ni geográficas**.
+> - **Coordenadas Geográficas (`GeographicCoordinate`):** Modelo completamente separado que contiene `latitude` en $[-90.0, 90.0]$, `longitude` en $[-180.0, 180.0]$, elevación opcional, evidencia textual literal obligatoria (`raw_text`), página fuente obligatoria (`source_page >= 1`) y enlace opcional exclusivo a puntos visuales (`associated_point_id`).
+> - **Invariante de Georreferenciación:**
+>   - `georeferenced = False` $\implies$ `crs = None` y `geographic_coordinates = []`.
+>   - `georeferenced = True` $\implies$ `crs` explícito obligatorio (ej: `'EPSG:4326'`, `'ETRS89 / UTM zone 30N'`; **nunca se asume EPSG:4326 por defecto**) y al menos una coordenada geográfica observada respaldada por `raw_text`.
+
+### Entidades del Diagrama
+
+- `PointEntity`: Puntos, vértices, hitos, nodos o árboles con posición visual relativa `coordinate: Point2D`.
+- `LineEntity`: Líneas, límites, arroyos, transectos o flechas de conexión (`points: list[Point2D]`, `min_length=2`, no degeneradas; `source_point_id` y `target_point_id` resuelven exclusivamente a `PointEntity`).
+- `AreaEntity`: Zonas, bancales, parcelas o pasos de proceso (`bbox: BoundingBox2D` o `polygon: list[Point2D]` no degenerado con área mayor que cero y vértices no colineales).
+- `LabelEntity`: Anotaciones textuales legibles con posición visual opcional y referencia de anclaje `attached_to_id`.
+- `RelationEntity`: Relaciones topológicas o de flujo (`source_id`, `target_id`, `relation_type`, `directed`).
+- `DiagramOrientation`: Orientación declarada (`north_up`, `south_up`, `east_up`, `west_up`, `rotated`, `unknown`, `none`). Toda orientación declarada exige evidencia textual `raw_text`. `direction="rotated"` exige `degrees` numérico en $[0, 360]$; para el resto de orientaciones o si es `unknown`/`none`, `degrees` debe ser `None`.
+
+Todas las entidades poseen identificadores únicos en todo el diagrama y las referencias internas (`source_id`, `target_id`, `source_point_id`, `target_point_id`, `attached_to_id`, `associated_point_id`) se validan de forma determinista contra entidades existentes del tipo permitido.
+
+### Uso Programático de la API de Diagramas
+
+```python
+from src.fieldnotes.pipeline import UnlimitedOCRAgent
+from src.fieldnotes.schemas.diagram import DiagramIR
+
+# Instanciar agente con modelo de visión configurado
+agent = UnlimitedOCRAgent(
+    vision_model="qwen/qwen3.5-9b",
+    output_dir="./output_ocr",
+)
+
+# Extraer y persistir DiagramIR desde una imagen (diagram_type es obligatorio)
+diagram, artifacts = agent.process_diagram(
+    image_path="croquis_parcela.png",
+    diagram_type="field_sketch",
+    output_dir="./output_ocr",
+)
+
+print(f"Tipo: {diagram.diagram_type}")
+print(f"Áreas: {len(diagram.areas)}, Puntos: {len(diagram.points)}, Líneas: {len(diagram.lines)}")
+print(f"Artefactos persistidos en: {artifacts['canonical_dir']}")
+```
+
+### Persistencia Canónica, Staging y Rollback
+
+Al invocar `process_diagram` o `persist_diagram_artifacts`:
+- Genera el layout canónico en `<output_dir>/<safe_stem>/`:
+  - `diagram.json`: Serialización JSON estricta y determinista de `DiagramIR`.
+  - `assets/<safe_stem>_original.<ext>`: Copia exacta byte a byte de la imagen original.
+- **Cero renderizado gráfico:** No genera archivos `.svg`, `.mmd` ni `.mermaid`.
+- **Staging y Rollback Atómico:** Toda escritura se realiza en un subdirectorio de staging temporal `.staging_diagram_<stem>_<uuid>`. En caso de sobreescritura, se crea un respaldo temporal `.backup_diagram_<stem>_<uuid>`. Si ocurre un fallo de validación o E/S, se restaura la versión previa y se eliminan todos los directorios temporales, garantizando confinamiento estricto y cero artefactos residuales.
+
+### Alcance y Límites de PR 9
+
+- **Incluido en PR 9:** Esquemas `DiagramIR` y DTOs, validación determinista, contrato de prompt VLM, extracción multimodal, persistencia JSON/assets con staging/rollback y suite de tests offline.
+- **Fuera de alcance (PR 10):** Renderizado de flowcharts a sintaxis Mermaid y croquis a SVG.
+- **Fuera de alcance (PR 11):** Integración de diagramas dentro del perfil general `notebook` y CLI global por defecto.

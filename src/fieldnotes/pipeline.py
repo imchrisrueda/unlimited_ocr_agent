@@ -350,3 +350,31 @@ class UnlimitedOCRAgent:
             vision_model=vision_model,
         )
         return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+
+    def process_diagram(
+        self,
+        image_path: str | Path,
+        diagram_type: str,
+        output_dir: Optional[str | Path] = None,
+        page_number: int = 1,
+        ocr_context: Optional[str] = None,
+        prompt: Optional[str] = None,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ):
+        """Extrae un DiagramIR estructurado desde una imagen y opcionalmente persiste los artefactos.
+
+        Retorna una tupla (diagram_ir, persisted_artifacts_dict_or_None).
+        """
+        from .diagrams.extraction import process_diagram
+        return process_diagram(
+            image_path=image_path,
+            client=self.vlm,
+            diagram_type=diagram_type,  # type: ignore[arg-type]
+            output_base_dir=output_dir,
+            page_number=page_number,
+            ocr_context=ocr_context,
+            prompt=prompt,
+            max_tokens=max_tokens,
+            **kwargs,
+        )

@@ -1,34 +1,63 @@
-import sys
-import subprocess
+"""Crea el entorno local reproducible y selecciona PyTorch para el hardware disponible."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
 import shutil
+import subprocess
+import sys
 
-def is_nvidia_gpu_available():
-    """Comprueba si hay una GPU NVIDIA disponible mediante nvidia-smi o PyTorch."""
-    if shutil.which("nvidia-smi"):
-        try:
-            result = subprocess.run(["nvidia-smi"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            if result.returncode == 0:
-                return True
-        except Exception:
-            pass
-    return False
 
-def install_environment():
-    print("Detectando hardware del sistema...")
-    gpu_found = is_nvidia_gpu_available()
-    
-    if gpu_found:
-        print("GPU NVIDIA detectada. Instalando PyTorch con aceleración CUDA 12.4...")
-        cmd = ["uv", "pip", "install", "torch", "torchvision", "--index-url", "https://download.pytorch.org/whl/cu124", "-p", ".venv"]
+ROOT = Path(__file__).resolve().parent
+VENV = ROOT / ".venv"
+PYTHON = VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def run(*args: str) -> None:
+    subprocess.run(args, cwd=ROOT, check=True)
+
+
+def has_nvidia_gpu() -> bool:
+    executable = shutil.which("nvidia-smi")
+    if not executable:
+        return False
+    return subprocess.run(
+        [executable],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).returncode == 0
+
+
+def main() -> int:
+    if shutil.which("uv") is None:
+        print("Error: instala uv y vuelve a ejecutar este script.", file=sys.stderr)
+        return 1
+
+    if not PYTHON.exists():
+        run("uv", "venv", "--python", "3.11", str(VENV))
+
+    if has_nvidia_gpu():
+        print("GPU NVIDIA detectada: instalando PyTorch CUDA 12.4.")
+        run(
+            "uv",
+            "pip",
+            "install",
+            "--python",
+            str(PYTHON),
+            "torch==2.6.0",
+            "torchvision==0.21.0",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu124",
+        )
     else:
-        print("GPU NVIDIA no detectada. Instalando versión de PyTorch para CPU...")
-        cmd = ["uv", "pip", "install", "-r", "requirements.txt", "-p", ".venv"]
-        
-    try:
-        subprocess.run(cmd, check=True)
-        print("Entorno de dependencias instalado correctamente.")
-    except Exception as e:
-        print(f"Error al instalar dependencias: {e}")
+        print("No se detectó GPU NVIDIA: se instalará PyTorch para CPU.")
+
+    run("uv", "pip", "install", "--python", str(PYTHON), "-r", "requirements.txt")
+    print(f"Entorno preparado en {VENV}")
+    return 0
+
 
 if __name__ == "__main__":
-    install_environment()
+    raise SystemExit(main())

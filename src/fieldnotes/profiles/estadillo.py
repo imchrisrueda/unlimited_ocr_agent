@@ -18,7 +18,12 @@ from src.fieldnotes.review.crops import generate_review_crops_for_issues
 from src.fieldnotes.merge.estadillo import merge_estadillo_pages
 from src.fieldnotes.normalization.estadillo import normalize_species
 from src.fieldnotes.validation.estadillo import validate_estadillo_document
-from src.fieldnotes.render.markdown import render_estadillo_markdown
+from src.fieldnotes.render.estadillo_delivery import (
+    render_estadillo_csv,
+    render_estadillo_notes,
+    resolve_session_date,
+)
+from src.fieldnotes.schemas.warnings import ExtractionWarning
 from src.fieldnotes.vlm.errors import LMStudioEmptyResponseError, LMStudioResponseTruncatedError
 
 ESTADILLO_PROMPT_TEMPLATE = """Extrae de forma rigurosa y exhaustiva todos los datos de esta página de notas de campo (estadillo forestal/agronómico).
@@ -60,6 +65,17 @@ ESTADILLO_DEFAULT_EXTRA_BODY: dict[str, Any] = {
     "enable_thinking": False,
     "reasoning_effort": "none",
 }
+
+def build_estadillo_page_prompt(page_number: int, user_prompt: Optional[str] = None) -> str:
+    """Conserva el contrato estructurado y añade instrucciones del usuario como contexto."""
+    result = ESTADILLO_PROMPT_TEMPLATE.format(page_number=page_number)
+    if user_prompt and user_prompt.strip():
+        result += (
+            "\n\n--- INSTRUCCIÓN ADICIONAL DEL USUARIO ---\n"
+            f"{user_prompt.strip()}\n"
+            "--- FIN INSTRUCCIÓN ADICIONAL ---\n"
+        )
+    return result
 
 _WINDOWS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL",
@@ -162,7 +178,7 @@ class EstadilloProfile:
         5. Fusión pura de páginas y reconciliación de cabecera.
         6. Normalización auditable de especies.
         7. Validación determinista de calidad.
-        8. Renderizado Markdown determinista de dos tablas.
+        8. Renderizado determinista de notas.md y datos.csv vinculados.
         9. Generación de ReviewIssues y crops visuales confinados en review/.
         10. Publicación atómica del directorio de staging a la ruta canónica con rollback.
         """
@@ -236,11 +252,7 @@ class EstadilloProfile:
             page_dtos: list[EstadilloPageDTO] = []
 
             for art in artifacts:
-                page_prompt = (
-                    prompt
-                    if prompt is not None
-                    else ESTADILLO_PROMPT_TEMPLATE.format(page_number=art.page_number)
-                )
+                page_prompt = build_estadillo_page_prompt(art.page_number, prompt)
 
                 call_kwargs = dict(kwargs)
                 call_kwargs.setdefault("reasoning_effort", "none")
@@ -281,8 +293,37 @@ class EstadilloProfile:
             # 5. Pure Deterministic Validation
             validated_doc = validate_estadillo_document(norm_doc)
 
-            # 6. Pure Markdown Rendering (exact 2 tables of AGENTS.md)
-            markdown_output = render_estadillo_markdown(validated_doc)
+            # 6. Resolver la sesión sin inventar fechas y renderizar la entrega canónica.
+            session_date = resolve_session_date(validated_doc)
+            if session_date is None:
+                validated_doc = validated_doc.model_copy(deep=True)
+                validated_doc.warnings.append(
+                    ExtractionWarning(
+                        code="SESSION_DATE_UNRESOLVED",
+                        message=(
+                            "La fecha de sesión no existe, no es ISO válida o presenta conflicto; "
+                            f"se conserva el nombre seguro del documento '{stem}'."
+                        ),
+                        severity="warning",
+                        source_page=(
+                            validated_doc.header.fecha.source_page
+                            if validated_doc.header and validated_doc.header.fecha
+                            else None
+                        ),
+                        field_name="fecha",
+                    )
+                )
+            session_name = session_date or stem
+            canonical_dir = (self.output_base_dir / session_name).resolve()
+            try:
+                canonical_dir.relative_to(self.output_base_dir)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Ruta canónica '{canonical_dir}' escapa del directorio base '{self.output_base_dir}'"
+                ) from exc
+
+            notes_output = render_estadillo_notes(validated_doc)
+            csv_output = render_estadillo_csv(validated_doc)
 
             # 7. Generación de ReviewIssues y Crops visuales confinados
             review_issues = extract_review_issues_from_document(validated_doc)
@@ -305,11 +346,13 @@ class EstadilloProfile:
             )
 
             # 8. Escribir archivos finales en staging
-            notebook_path = staging_dir / "notebook.md"
+            notes_path = staging_dir / "notas.md"
+            csv_path = staging_dir / "datos.csv"
             document_json_path = staging_dir / "document.json"
             issues_json_path = staging_review_dir / "issues.json"
 
-            write_atomic_file(notebook_path, markdown_output)
+            write_atomic_file(notes_path, notes_output)
+            write_atomic_file(csv_path, csv_output)
             write_atomic_file(document_json_path, validated_doc.model_dump_json(indent=2))
             write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
 
@@ -328,7 +371,7 @@ class EstadilloProfile:
                     shutil.move(str(backup_dir), str(canonical_dir))
                 raise
 
-            return markdown_output, validated_doc
+            return notes_output, validated_doc
 
         except Exception:
             # En caso de fallo, limpiar exclusivamente staging y no tocar canonical preexistente

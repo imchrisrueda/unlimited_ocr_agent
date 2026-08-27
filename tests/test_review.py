@@ -972,7 +972,8 @@ class TestEstadilloProfileReviewIntegration(unittest.TestCase):
             self.assertTrue(issues_file.is_file())
 
             issues = review_issues_from_json(issues_file.read_text(encoding="utf-8"))
-            self.assertEqual(issues, [], "Un documento sin incidencias debe generar review/issues.json con lista vacía")
+            self.assertEqual(len(issues), 1)
+            self.assertEqual(issues[0].warning_code, "SESSION_DATE_UNRESOLVED")
         finally:
             shutil.rmtree(temp_base, ignore_errors=True)
 
@@ -1019,12 +1020,12 @@ class TestEstadilloProfileReviewIntegration(unittest.TestCase):
             self.assertTrue(issues_file.is_file())
 
             issues = review_issues_from_json(issues_file.read_text(encoding="utf-8"))
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].field, "altura_cm")
-            self.assertIsNotNone(issues[0].crop_path)
-            self.assertTrue(issues[0].crop_path.startswith("review/"))
+            target = next(i for i in issues if i.field == "altura_cm")
+            self.assertTrue(any(i.warning_code == "SESSION_DATE_UNRESOLVED" for i in issues))
+            self.assertIsNotNone(target.crop_path)
+            self.assertTrue(target.crop_path.startswith("review/"))
 
-            crop_abs_path = canonical_dir / issues[0].crop_path
+            crop_abs_path = canonical_dir / target.crop_path
             self.assertTrue(crop_abs_path.is_file())
             with Image.open(crop_abs_path) as cimg:
                 self.assertEqual(cimg.format, "PNG")
@@ -1203,7 +1204,8 @@ class TestEstadilloProfileReviewIntegration(unittest.TestCase):
         png_files_2 = list((canonical_dir / "review").glob("*.png"))
         self.assertEqual(len(png_files_2), 0, "Los crops obsoletos de la ejecución previa deben eliminarse")
         issues_2 = review_issues_from_json((canonical_dir / "review" / "issues.json").read_text(encoding="utf-8"))
-        self.assertEqual(issues_2, [])
+        self.assertEqual(len(issues_2), 1)
+        self.assertEqual(issues_2[0].warning_code, "SESSION_DATE_UNRESOLVED")
         shutil.rmtree(temp_base, ignore_errors=True)
 
     def test_prompt_template_requires_row_bbox_and_compact_format(self):
@@ -1305,13 +1307,13 @@ class TestEstadilloProfileReviewIntegration(unittest.TestCase):
             self.assertTrue(issues_file.is_file())
 
             issues = review_issues_from_json(issues_file.read_text(encoding="utf-8"))
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].row_key, "col1_fil15")
-            self.assertEqual(issues[0].warning_code, "UNRECOGNIZED_SPECIES")
-            self.assertIsNotNone(issues[0].crop_path)
-            self.assertTrue(issues[0].crop_path.startswith("review/"))
+            target = next(i for i in issues if i.warning_code == "UNRECOGNIZED_SPECIES")
+            self.assertEqual(target.row_key, "col1_fil15")
+            self.assertTrue(any(i.warning_code == "SESSION_DATE_UNRESOLVED" for i in issues))
+            self.assertIsNotNone(target.crop_path)
+            self.assertTrue(target.crop_path.startswith("review/"))
 
-            crop_file = canonical_dir / issues[0].crop_path
+            crop_file = canonical_dir / target.crop_path
             self.assertTrue(crop_file.is_file())
         finally:
             shutil.rmtree(temp_base, ignore_errors=True)

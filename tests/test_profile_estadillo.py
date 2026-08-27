@@ -1,3 +1,4 @@
+import csv
 import os
 import shutil
 import tempfile
@@ -206,7 +207,8 @@ class TestEstadilloProfileUnit(unittest.TestCase):
             # Layout canónico
             doc_dir = Path(temp_base) / "estadillo_sample"
             self.assertTrue(doc_dir.is_dir())
-            self.assertTrue((doc_dir / "notebook.md").is_file())
+            self.assertTrue((doc_dir / "notas.md").is_file())
+            self.assertTrue((doc_dir / "datos.csv").is_file())
             self.assertTrue((doc_dir / "document.json").is_file())
             self.assertTrue((doc_dir / "pages").is_dir())
             self.assertTrue((doc_dir / "raw").is_dir())
@@ -218,10 +220,13 @@ class TestEstadilloProfileUnit(unittest.TestCase):
             self.assertEqual(loaded_doc.source_file, str(temp_input.resolve()))
             self.assertEqual(loaded_doc.header.objetivo.raw, "Ensayo")
 
-            # notebook.md comienza con las 2 tablas obligatorias
-            lines = (doc_dir / "notebook.md").read_text(encoding="utf-8").splitlines()
-            self.assertEqual(lines[0], "| Objetivo | Fecha | Asistentes |")
-            self.assertIn("|id|col|fil|especie|altura_cm|foto|bbch|observaciones|", lines[5])
+            # La entrega enlaza notas.md y datos.csv
+            notes = (doc_dir / "notas.md").read_text(encoding="utf-8")
+            csv_text = (doc_dir / "datos.csv").read_text(encoding="utf-8")
+            self.assertTrue(notes.startswith('---\nobjetivo: "Ensayo"'))
+            self.assertIn('datos: "datos.csv"', notes)
+            self.assertEqual(csv_text.splitlines()[0], "id,col,fil,especie,altura_cm,foto,bbch,observaciones")
+            self.assertIn(",1,1,P,140,,,", csv_text)
         finally:
             shutil.rmtree(temp_base, ignore_errors=True)
 
@@ -499,8 +504,9 @@ class TestEstadilloProfileUnit(unittest.TestCase):
             self.assertEqual(doc_res.total_records, 1)
             self.assertEqual(doc_res.pages[0].total_records, 1)
             self.assertEqual(doc_res.pages[1].total_records, 0)
-            self.assertIn("| Test |", md_res)
-            self.assertIn("||1|26|H|5.5||22||", md_res)
+            self.assertIn('objetivo: "Test"', md_res)
+            csv_text = (Path(temp_base) / "doc" / "datos.csv").read_text(encoding="utf-8")
+            self.assertIn(",1,26,H,5.5,,22,", csv_text)
         finally:
             shutil.rmtree(temp_base, ignore_errors=True)
 
@@ -538,9 +544,10 @@ class TestRealEstadilloProfileIntegration(unittest.TestCase):
             self.assertEqual(len(doc_res.pages), 6, "El PDF 26-05-06.pdf debe generar 6 páginas")
 
             # Layout canónico
-            safe_dir = Path(temp_output) / "26-05-06"
+            safe_dir = Path(temp_output) / "2026-05-06"
             self.assertTrue(safe_dir.is_dir())
-            self.assertTrue((safe_dir / "notebook.md").is_file())
+            self.assertTrue((safe_dir / "notas.md").is_file())
+            self.assertTrue((safe_dir / "datos.csv").is_file())
             self.assertTrue((safe_dir / "document.json").is_file())
             self.assertTrue((safe_dir / "pages").is_dir())
             self.assertTrue((safe_dir / "raw").is_dir())
@@ -555,12 +562,13 @@ class TestRealEstadilloProfileIntegration(unittest.TestCase):
             loaded = EstadilloDocument.model_validate_json((safe_dir / "document.json").read_text(encoding="utf-8"))
             self.assertEqual(len(loaded.pages), 6)
 
-            # Comprobar inicio con dos tablas de AGENTS.md
+            # Comprobar front matter y vínculo CSV
             lines = md_res.splitlines()
-            self.assertEqual(lines[0], "| Objetivo | Fecha | Asistentes |")
-            self.assertEqual(lines[1], "|---|---|---|")
-            self.assertIn("Especies: P;H;R;M", lines[3])
-            self.assertIn("|id|col|fil|especie|altura_cm|foto|bbch|observaciones|", lines[5])
+            self.assertEqual(lines[0], "---")
+            self.assertIn('datos: "datos.csv"', lines)
+            self.assertIn("fecha: 2026-05-06", lines)
+            csv_header = (safe_dir / "datos.csv").read_text(encoding="utf-8").splitlines()[0]
+            self.assertEqual(csv_header, "id,col,fil,especie,altura_cm,foto,bbch,observaciones")
 
             # Verificación endurecida de registros no vacíos
             total_records = doc_res.total_records
@@ -573,11 +581,14 @@ class TestRealEstadilloProfileIntegration(unittest.TestCase):
                 f"Expectativa mínima no alcanzada: se esperaban >=50 registros a lo largo de las 6 páginas, obtenidos {total_records}"
             )
 
-            # Verificar que el Markdown contiene filas de datos reales
-            data_table_lines = [l for l in lines[6:] if l.strip().startswith("|") and not l.startswith("|---|")]
+            # Verificar que el CSV contiene todas las filas de datos reales
+            with (safe_dir / "datos.csv").open(encoding="utf-8", newline="") as csv_file:
+                csv_rows = list(csv.reader(csv_file))
+            self.assertEqual(len(csv_rows) - 1, total_records)
             self.assertGreaterEqual(
-                len(data_table_lines), 50,
-                f"La tabla Markdown debe contener filas de datos reales, encontradas {len(data_table_lines)}"
+                len(csv_rows) - 1,
+                50,
+                f"El CSV debe contener al menos 50 registros reales, encontrados {len(csv_rows) - 1}",
             )
 
             print(f"\nESTADILLO_E2E_SUCCESS pages=6 records={total_records} warnings={len(doc_res.warnings)}")

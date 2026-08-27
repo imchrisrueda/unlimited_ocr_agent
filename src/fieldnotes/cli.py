@@ -163,7 +163,7 @@ def main(args=None):
         if parsed_args.export_md:
             parser.error(
                 "--export-md no es compatible con --profile estadillo; "
-                "la salida canónica se persiste automáticamente en <output>/<document_stem>/notebook.md"
+                "la salida canónica se persiste automáticamente en <output>/<fecha>/notas.md y datos.csv"
             )
         if parsed_args.export_pdf:
             parser.error("--export-pdf no es compatible con --profile estadillo")
@@ -249,7 +249,7 @@ def main(args=None):
         if parsed_args.export_md:
             parser.error(
                 "--export-md no es compatible con --profile notebook; "
-                "la salida canónica se persiste automáticamente en <output>/<document_stem>/notebook.md"
+                "la salida canónica se persiste automáticamente en <output>/<fecha>/notas.md y datos.csv"
             )
         if parsed_args.export_pdf:
             parser.error("--export-pdf no es compatible con --profile notebook")

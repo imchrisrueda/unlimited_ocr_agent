@@ -294,9 +294,16 @@ def process_diagram(
     ocr_context: Optional[str] = None,
     prompt: Optional[str] = None,
     max_tokens: int = 4096,
+    render: bool = False,
+    document_name: Optional[str] = None,
     **kwargs: Any,
 ) -> Tuple[DiagramIR, Optional[dict[str, Path]]]:
-    """Extrae un DiagramIR estructurado y opcionalmente persiste los artefactos de forma atómica y confinada."""
+    """Extrae un DiagramIR estructurado y opcionalmente persiste los artefactos de forma atómica y confinada.
+
+    Si render=True y se especifica output_base_dir, genera y publica además los artefactos
+    visuales derivados (SVG para croquis, Mermaid para flowcharts) y el Markdown accesible.
+    Si render=False (por defecto), mantiene la persistencia canónica exclusiva de PR9 (JSON + imagen original).
+    """
     diagram = extract_diagram_from_image(
         image_path=image_path,
         client=client,
@@ -310,10 +317,20 @@ def process_diagram(
 
     artifacts = None
     if output_base_dir is not None:
-        artifacts = persist_diagram_artifacts(
-            diagram=diagram,
-            source_image_path=image_path,
-            output_base_dir=output_base_dir,
-        )
+        if render:
+            from .rendering import publish_rendered_diagram
+            artifacts = publish_rendered_diagram(
+                diagram=diagram,
+                source_image_path=image_path,
+                output_base_dir=output_base_dir,
+                document_name=document_name,
+            )
+        else:
+            artifacts = persist_diagram_artifacts(
+                diagram=diagram,
+                source_image_path=image_path,
+                output_base_dir=output_base_dir,
+                document_name=document_name,
+            )
 
     return diagram, artifacts

@@ -422,5 +422,79 @@ Al invocar `process_diagram` o `persist_diagram_artifacts`:
 ### Alcance y Límites de PR 9
 
 - **Incluido en PR 9:** Esquemas `DiagramIR` y DTOs, validación determinista, contrato de prompt VLM, extracción multimodal, persistencia JSON/assets con staging/rollback y suite de tests offline.
-- **Fuera de alcance (PR 10):** Renderizado de flowcharts a sintaxis Mermaid y croquis a SVG.
+- **Completado en PR 10:** Renderizado de flowcharts a sintaxis Mermaid y croquis a SVG con descripción Markdown accesible.
 - **Fuera de alcance (PR 11):** Integración de diagramas dentro del perfil general `notebook` y CLI global por defecto.
+
+## Renderizado Determinista y Accesible de Diagramas (PR 10)
+
+El módulo `src/fieldnotes/diagrams/` añade capacidades de renderizado **puro, determinista, seguro y accesible** para transformar instancias de `DiagramIR` en artefactos visuales y descripciones textuales sin volver a consultar al modelo VLM ni requerir GPU, red, navegador, Mermaid CLI ni Graphviz:
+
+### Enrutamiento Estricto por Tipo de Diagrama
+
+| Tipo de Diagrama (`diagram_type`) | Artefacto Visual Derivado | Motor de Renderizado | Salida Accesible |
+|---|---|---|---|
+| `flowchart` | `diagram.mmd` | `render_mermaid` (Mermaid puro) | Bloque ````mermaid ```` incrustado + texto |
+| `field_sketch` | `assets/<stem>.svg` | `render_svg` (SVG XML estándar) | Enlace `![...](assets/...)` + texto |
+| `gps_sketch` | `assets/<stem>.svg` | `render_svg` (SVG XML estándar) | Enlace `![...](assets/...)` + texto |
+
+El enrutamiento es estricto: solicitar Mermaid para un croquis o SVG para un diagrama de flujo se rechaza de inmediato con `ValueError`.
+
+### Seguridad Estricta y Neutralización de Inyecciones
+
+1. **Mermaid (`src/fieldnotes/diagrams/render_mermaid.py`):**
+   - **Identificadores internos seguros:** Los nodos se identifican exclusivamente mediante tokens deterministas generados por índice (`n0`, `n1`, `n2`, ...), completamente independientes del texto del documento o de IDs arbitrarios.
+   - **Saneamiento de etiquetas (`sanitize_mermaid_label`):** Neutraliza saltos de línea (`\r\n`, `\n`), comillas dobles, comillas invertidas, barras invertidas, punto y coma, delimitadores de Mermaid (`[ ]`, `{ }`, `( )`, `|`), entidades HTML (`<`, `>`, `&`) y palabras clave estructurales (`subgraph`), impidiendo la inyección de nodos espurios, aristas no autorizadas o scripts.
+2. **SVG XML (`src/fieldnotes/diagrams/render_svg.py`):**
+   - **XML estándar válido:** Validado automáticamente con `xml.etree.ElementTree`.
+   - **Lienzo fijo y escalado lineal:** Utiliza un `viewBox="0 0 1000 1000"` fijo donde las coordenadas relativas $[0.0, 1.0]$ se escalan linealmente a $[0.0, 1000.0]$. Las coordenadas visuales **JAMÁS** se transforman en coordenadas GPS.
+   - **Prohibición absoluta de contenido activo:** El renderizador nunca emite elementos `<script>`, `<foreignObject>`, enlaces (`<a>`, `href`, `xlink:href`), imágenes externas (`<image>`) ni referencias remotas por URL.
+   - **Estilos estáticos:** Emplea paletas visuales sobrias y constantes definidas en código, diferenciando puntos de muestreo (rojo), vegetación/árboles (verde), vértices (púrpura) y elementos genéricos (naranja).
+   - **Indicadores de orientación fieles:** Si el diagrama tiene una orientación explícita declarada (`north_up`, `south_up`, `east_up`, `west_up`, `rotated` con grados), dibuja un indicador visual en la esquina superior derecha. Si la orientación es `unknown` o `none`, **no dibuja ninguna rosa de los vientos engañosa**.
+
+### Descripción Markdown Accesible y No Inferencial (`render_markdown`)
+
+Genera un documento Markdown autosuficiente estructurado para lectura humana y análisis por LLMs sin visión:
+- **Inclusión del recurso:** Incrusta el bloque Mermaid o enlaza al archivo SVG relativo.
+- **Declaración explícita sobre GPS:**
+  - Cuando `georeferenced = False`: Declara explícitamente: `"- **Georreferenciación:** No georreferenciado. El croquis no contiene coordenadas GPS exactas (las posiciones visuales observadas son relativas al dibujo [0.0, 1.0])."`
+  - Cuando `georeferenced = True`: Lista el CRS explícito y cada coordenada geográfica observada con su `raw_text`, latitud, longitud, elevación y procedencia.
+- **Orientación:** Describe la orientación únicamente cuando existe evidencia textual observada.
+- **Desglose de entidades:** Detalla áreas (con BBox o polígonos), puntos (con coordenadas relativas $x, y$), líneas (conectividad, dirección), etiquetas legibles y relaciones explícitas.
+- **Invariante de no inferencia:** El generador **NUNCA inventa** relaciones cardinales (p. ej. "al oeste de") ni topologías espaciales no especificadas en los campos de `DiagramIR`.
+
+### Publicación Canónica Atómica y Rollback (`publish_rendered_diagram`)
+
+La publicación consolida los artefactos en el directorio canónico `<output_dir>/<stem>/`:
+- `diagram.json`: Serialización JSON exacta de `DiagramIR` (evidencia canónica).
+- `assets/<stem>_original.<ext>`: Copia byte a byte inalterada de la imagen original.
+- `diagram.md`: Descripción Markdown accesible.
+- `diagram.mmd` (si es `flowchart`) o `assets/<stem>.svg` (si es `field_sketch` / `gps_sketch`).
+
+**Garantías:**
+- **Confinamiento estricto:** Rechaza intentos de Directory Traversal en `document_name` o rutas de salida.
+- **Staging y Rollback:** Las escrituras ocurren en un directorio temporal aislado. Ante cualquier fallo de E/S o validación, se limpia el staging y se restaura el directorio previo desde el backup, evitando estados parciales o corruptos.
+
+### Uso Programático del Renderizado
+
+```python
+from src.fieldnotes.schemas.diagram import DiagramIR
+from src.fieldnotes.diagrams.rendering import render_diagram, publish_rendered_diagram
+
+# 1. Renderizado puro en memoria
+result = render_diagram(diagram)
+print(f"Tipo: {result.diagram_type}")
+if result.mermaid_code:
+    print("Código Mermaid generado:")
+    print(result.mermaid_code)
+elif result.svg_content:
+    print("SVG generado (longitud):", len(result.svg_content))
+
+# 2. Publicación atómica completa
+published_files = publish_rendered_diagram(
+    diagram=diagram,
+    source_image_path="croquis.png",
+    output_base_dir="./output_ocr",
+    document_name="croquis_parcela_01",
+)
+print("Archivos publicados:", published_files)
+```

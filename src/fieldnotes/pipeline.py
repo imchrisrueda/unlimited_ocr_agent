@@ -360,10 +360,14 @@ class UnlimitedOCRAgent:
         ocr_context: Optional[str] = None,
         prompt: Optional[str] = None,
         max_tokens: int = 4096,
+        render: bool = False,
+        document_name: Optional[str] = None,
         **kwargs: Any,
     ):
         """Extrae un DiagramIR estructurado desde una imagen y opcionalmente persiste los artefactos.
 
+        Si render=True, genera y publica además los artefactos visuales derivados (SVG/Mermaid)
+        y la descripción Markdown accesible.
         Retorna una tupla (diagram_ir, persisted_artifacts_dict_or_None).
         """
         from .diagrams.extraction import process_diagram
@@ -376,5 +380,32 @@ class UnlimitedOCRAgent:
             ocr_context=ocr_context,
             prompt=prompt,
             max_tokens=max_tokens,
+            render=render,
+            document_name=document_name,
             **kwargs,
+        )
+
+    def render_diagram(
+        self,
+        diagram: Any,
+        asset_relative_path: Optional[str] = None,
+    ):
+        """Renderiza de forma pura y determinista un DiagramIR a sus artefactos visuales y Markdown."""
+        from .diagrams.rendering import render_diagram
+        return render_diagram(diagram=diagram, asset_relative_path=asset_relative_path)
+
+    def publish_rendered_diagram(
+        self,
+        diagram: Any,
+        source_image_path: str | Path,
+        output_dir: str | Path,
+        document_name: Optional[str] = None,
+    ):
+        """Publica de forma atómica y confinada los artefactos canónicos y derivados de DiagramIR."""
+        from .diagrams.rendering import publish_rendered_diagram
+        return publish_rendered_diagram(
+            diagram=diagram,
+            source_image_path=source_image_path,
+            output_base_dir=output_dir,
+            document_name=document_name,
         )

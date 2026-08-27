@@ -54,6 +54,20 @@ from .diagram import (
     DiagramDTO,
     dto_to_diagram_ir,
 )
+from .notebook import (
+    NotebookConfig,
+    NotebookSectionConfig,
+    GenericTableDTO,
+    GenericTable,
+    NotebookSectionDTO,
+    NotebookSection,
+    NotebookNoteItemDTO,
+    NotebookNoteItem,
+    NotebookPageDTO,
+    NotebookPage,
+    NotebookDocument,
+    dto_to_notebook_page,
+)
 
 __all__ = [
     "EvidenceValue",
@@ -108,4 +122,16 @@ __all__ = [
     "RelationEntityDTO",
     "DiagramDTO",
     "dto_to_diagram_ir",
+    "NotebookConfig",
+    "NotebookSectionConfig",
+    "GenericTableDTO",
+    "GenericTable",
+    "NotebookSectionDTO",
+    "NotebookSection",
+    "NotebookNoteItemDTO",
+    "NotebookNoteItem",
+    "NotebookPageDTO",
+    "NotebookPage",
+    "NotebookDocument",
+    "dto_to_notebook_page",
 ]

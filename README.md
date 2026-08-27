@@ -498,3 +498,98 @@ published_files = publish_rendered_diagram(
 )
 print("Archivos publicados:", published_files)
 ```
+
+## Perfil General de Cuaderno de Campo (`--profile notebook`) (PR 11)
+
+El perfil general `notebook` unifica la digitalización integral de cuadernos de campo heterogéneos, combinando registros tabulares de estadillo, texto narrativo estructurado, notas y listas breves, tablas genéricas irregulares y diagramas/croquis visuales con trazabilidad documental estricta.
+
+### Cumplimiento Estricto de AGENTS.md
+
+La salida `notebook.md` generada por este perfil garantiza:
+1. **Inicio Obligatorio Idéntico:** Comienza con exactamente las dos tablas iniciales requeridas por `AGENTS.md`:
+   - **Tabla 1 (3x2):** Metadatos de cabecera (`Objetivo`, `Fecha`, `Asistentes`, `Equipamiento`, `Situación atmosférica`, `Especies: P;H;R;M`). Si no se observa evidencia, las celdas se mantienen vacías (`""`).
+   - **Tabla 2 (8 columnas):** Registros de campo (`id`, `col`, `fil`, `especie`, `altura_cm`, `foto`, `bbch`, `observaciones`). Traslada las especies normalizadas (`Ap` $\to$ `P`, `Ah` $\to$ `H`, `Ar` $\to$ `R`, `Mz` $\to$ `M`), conservando cualquier valor no catalogado en crudo (`raw`) y emitiendo una advertencia auditable.
+2. **Composición Flexible sin Fabricación:** Tras las dos tablas iniciales, el perfil renderiza únicamente las secciones, notas, tablas genéricas o diagramas que cuenten con evidencia real en el documento. **No presupone ni fabrica secciones vacías** (salvo solicitud explícita vía configuración tipada).
+3. **Deduplicación Automática:** Los textos incorporados en la cabecera (Tabla 1) o en los registros tabulares (Tabla 2) no se duplican innecesariamente en las secciones posteriores.
+
+### Configuración Tipada y Versionada (`NotebookConfig`)
+
+El comportamiento del perfil se personaliza mediante una configuración tipada y estricta (`extra="forbid"`, `schema_version=1`):
+
+```json
+{
+  "schema_version": 1,
+  "include_empty_sections": false,
+  "section_order": [
+    "metadata",
+    "estadillo_table",
+    "sections",
+    "notes",
+    "tables",
+    "diagrams",
+    "additional_text"
+  ],
+  "species_normalization": true,
+  "render_diagram_visuals": true,
+  "include_accessible_diagram_descriptions": true,
+  "section_configs": {
+    "clima": {
+      "title": "Condiciones Meteorológicas",
+      "enabled": true,
+      "aliases": ["clima", "meteo", "tiempo"],
+      "include_if_empty": false
+    }
+  }
+}
+```
+
+### Layout Canónico de Persistencia
+
+Al ejecutar `--profile notebook`, los artefactos se publican de forma atómica y confinada en `<output_dir>/<document_stem>/`:
+- `notebook.md`: Documento Markdown consolidado y determinista.
+- `document.json`: Serialización canónica de `NotebookDocument` (con interoperabilidad a `DocumentIR`).
+- `pages/page_001.png...`: Imágenes rasterizadas de cada página.
+- `raw/page_001.md...`: Extracción OCR textual cruda por página.
+- `assets/`:
+  - `sketch_p001_00.svg...`: Gráficos SVG derivados de croquis de campo (`field_sketch` / `gps_sketch`).
+  - `diagram_p001_00.mmd...`: Definiciones Mermaid derivadas de diagramas de flujo (`flowchart`).
+- `review/`:
+  - `issues.json`: Lista auditable de incidencias de revisión (`ReviewIssue`).
+  - `crops/crop_p001_xxx.png...`: Recortes visuales confinados de zonas dudosas o con advertencias.
+
+### Uso en CLI
+
+```powershell
+# Ejecución básica del perfil notebook
+.\.venv\Scripts\python.exe agent.py cuaderno.pdf --profile notebook --vision-model "qwen/qwen3.5-9b" --output ./output_ocr
+
+# Con archivo de configuración tipada
+.\.venv\Scripts\python.exe agent.py cuaderno.pdf --profile notebook --config config_personalizada.json --vision-model "qwen/qwen3.5-9b"
+```
+
+### Uso Programático
+
+```python
+from src.fieldnotes.pipeline import UnlimitedOCRAgent
+from src.fieldnotes.schemas.notebook import NotebookConfig
+
+agent = UnlimitedOCRAgent(
+    vision_model="qwen/qwen3.5-9b",
+    output_dir="./output_ocr",
+)
+
+config = NotebookConfig(
+    include_empty_sections=False,
+    species_normalization=True,
+)
+
+markdown_text, notebook_doc = agent.process_notebook(
+    file_path="cuaderno_campo.pdf",
+    config=config,
+)
+
+print("Páginas procesadas:", len(notebook_doc.pages))
+print("Filas de estadillo:", len(notebook_doc.estadillo_rows))
+print("Secciones:", len(notebook_doc.sections))
+print("Diagramas:", len(notebook_doc.diagrams))
+```

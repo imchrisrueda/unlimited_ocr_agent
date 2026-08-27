@@ -1,4 +1,4 @@
-﻿import re
+import re
 from typing import Optional, List
 from ..schemas.diagram import DiagramIR
 from .validation import validate_diagram_ir
@@ -135,11 +135,12 @@ def get_diagram_type_label(diagram_type: str) -> str:
 def render_markdown(
     diagram: DiagramIR,
     asset_relative_path: Optional[str] = None,
+    include_visual: bool = True,
 ) -> str:
     """Genera una descripción Markdown completa, accesible y determinista de DiagramIR.
 
     Garantías de accesibilidad y fidelidad semántica:
-    1. Incluye bloque de código Mermaid (para flowchart) o enlace al recurso SVG (para croquis).
+    1. Incluye bloque de código Mermaid (para flowchart) o enlace al recurso SVG (para croquis) si include_visual=True.
     2. Descripción textual autosuficiente para lectura humana y análisis por LLMs sin visión.
     3. Basada EXCLUSIVAMENTE en campos explícitos de DiagramIR (sin inventar relaciones ni orientación).
     4. Declara de forma clara y explícita la ausencia de GPS exacto cuando georeferenced=False.
@@ -168,19 +169,20 @@ def render_markdown(
     lines.append("")
 
     # 2. Inclusión visual (Mermaid para flowchart, imagen SVG para croquis)
-    if diagram.diagram_type == "flowchart":
-        mermaid_code = render_mermaid(diagram)
-        lines.append("```mermaid")
-        lines.append(mermaid_code.rstrip())
-        lines.append("```")
-        lines.append("")
-    else:
-        # Enlace a SVG
-        default_svg_path = f"assets/sketch_p{diagram.source_page:03d}.svg"
-        valid_asset_path = validate_and_sanitize_asset_path(asset_relative_path, default_svg_path)
-        alt_label = sanitize_alt_text(diagram.title or type_label)
-        lines.append(f"![{alt_label}]({valid_asset_path})")
-        lines.append("")
+    if include_visual:
+        if diagram.diagram_type == "flowchart":
+            mermaid_code = render_mermaid(diagram)
+            lines.append("```mermaid")
+            lines.append(mermaid_code.rstrip())
+            lines.append("```")
+            lines.append("")
+        else:
+            # Enlace a SVG
+            default_svg_path = f"assets/sketch_p{diagram.source_page:03d}.svg"
+            valid_asset_path = validate_and_sanitize_asset_path(asset_relative_path, default_svg_path)
+            alt_label = sanitize_alt_text(diagram.title or type_label)
+            lines.append(f"![{alt_label}]({valid_asset_path})")
+            lines.append("")
 
     # 3. Descripción textual estructurada para accesibilidad
     lines.append("#### Descripción textual")

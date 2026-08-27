@@ -8,6 +8,7 @@ from .config import (
     get_lm_studio_vision_model,
     get_lm_studio_text_model,
     get_lm_studio_legacy_model,
+    NotebookConfig,
 )
 from .profiles.estadillo import safe_document_stem
 
@@ -17,9 +18,13 @@ def build_parser():
     parser.add_argument("file_path", help="Ruta de la imagen o archivo PDF a digitalizar")
     parser.add_argument(
         "--profile",
-        choices=("default", "estadillo"),
+        choices=("default", "estadillo", "notebook"),
         default="default",
-        help="Perfil de dominio para procesamiento estructurado (p. ej. 'estadillo')",
+        help="Perfil de dominio para procesamiento estructurado (p. ej. 'estadillo', 'notebook')",
+    )
+    parser.add_argument(
+        "--config",
+        help="Ruta al archivo JSON de configuración tipada para el perfil (p. ej. NotebookConfig)",
     )
     parser.add_argument(
         "--output",
@@ -143,6 +148,10 @@ def main(args=None):
         or legacy_env
     )
 
+    # Pre-validación de --config
+    if parsed_args.config and parsed_args.profile != "notebook":
+        parser.error("--config solo es compatible con --profile notebook")
+
     # Validaciones específicas de --profile estadillo ANTES de instanciar agente u OCR
     if parsed_args.profile == "estadillo":
         if parsed_args.raw:
@@ -217,6 +226,106 @@ def main(args=None):
 
         print(
             f"\n[PERFIL ESTADILLO] Procesamiento completado: {total_rows} registros extraídos, "
+            f"{total_warnings} advertencias detectadas, "
+            f"{total_review_items} elementos que requieren revisión."
+        )
+
+        print("\nRESPUESTA DEL AGENTE:")
+        print(final_result)
+
+        if parsed_args.keep_intermediate:
+            print(f"Archivos intermedios conservados en: {agent.output_dir}")
+
+        return
+
+    # Validaciones específicas de --profile notebook ANTES de instanciar agente u OCR
+    if parsed_args.profile == "notebook":
+        if parsed_args.raw:
+            parser.error("--raw no es compatible con --profile notebook")
+        if parsed_args.ask_vision:
+            parser.error("--ask-vision no es compatible con --profile notebook")
+        if parsed_args.chunk_size > 0:
+            parser.error("--chunk-size no es compatible con --profile notebook")
+        if parsed_args.export_md:
+            parser.error(
+                "--export-md no es compatible con --profile notebook; "
+                "la salida canónica se persiste automáticamente en <output>/<document_stem>/notebook.md"
+            )
+        if parsed_args.export_pdf:
+            parser.error("--export-pdf no es compatible con --profile notebook")
+        if not vision_model:
+            parser.error(
+                "Para usar --profile notebook debe especificarse un modelo de visión mediante "
+                "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
+            )
+
+        notebook_config = None
+        if parsed_args.config:
+            try:
+                notebook_config = NotebookConfig.from_file(parsed_args.config)
+            except Exception as cfg_exc:
+                parser.error(f"Error al cargar --config '{parsed_args.config}': {cfg_exc}")
+
+        agent = UnlimitedOCRAgent(
+            vision_model=vision_model,
+            text_model=text_model,
+            lm_model=parsed_args.lm_model or legacy_env,
+            output_dir=parsed_args.output or "./output_ocr",
+            ocr_mode=parsed_args.ocr_mode,
+            worker_timeout=parsed_args.worker_timeout,
+        )
+        if not parsed_args.keep_intermediate:
+            import atexit
+
+            atexit.register(agent.cleanup)
+
+        custom_prompt = (
+            instruction
+            if parsed_args.instruction_file
+            or parsed_args.prompt
+            != "Digitaliza este documento manteniendo su estructura en Markdown limpio."
+            else None
+        )
+
+        effective_max_tokens = (
+            4096 if parsed_args.max_tokens == 2048 else parsed_args.max_tokens
+        )
+        final_result, doc_result = agent.process_notebook(
+            file_path=parsed_args.file_path,
+            output_dir=parsed_args.output,
+            config=notebook_config,
+            prompt=custom_prompt,
+            max_tokens=effective_max_tokens,
+            reasoning_effort=parsed_args.reasoning_effort,
+        )
+
+        total_pages = len(doc_result.pages)
+        total_rows = len(doc_result.estadillo_rows)
+        total_sections = len(doc_result.sections)
+        total_tables = len(doc_result.tables)
+        total_diagrams = len(doc_result.diagrams)
+        total_warnings = len(doc_result.warnings)
+
+        # Contar elementos que requieren revisión desde review/issues.json
+        review_issues_path = (
+            Path(parsed_args.output or "./output_ocr")
+            / safe_document_stem(parsed_args.file_path)
+            / "review"
+            / "issues.json"
+        )
+        total_review_items = 0
+        if review_issues_path.is_file():
+            try:
+                issues_data = json.loads(review_issues_path.read_text(encoding="utf-8"))
+                if isinstance(issues_data, list):
+                    total_review_items = len(issues_data)
+            except Exception:
+                total_review_items = 0
+
+        print(
+            f"\n[PERFIL NOTEBOOK] Procesamiento completado: {total_pages} páginas, "
+            f"{total_rows} filas de estadillo, {total_sections} secciones, "
+            f"{total_tables} tablas, {total_diagrams} diagramas, "
             f"{total_warnings} advertencias detectadas, "
             f"{total_review_items} elementos que requieren revisión."
         )

@@ -351,6 +351,30 @@ class UnlimitedOCRAgent:
         )
         return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
 
+    def process_notebook(
+        self,
+        file_path: str | Path,
+        output_dir: Optional[str | Path] = None,
+        vision_model: Optional[str] = None,
+        config: Optional[Any] = None,
+        prompt: Optional[str] = None,
+        max_tokens: int = 4096,
+        **kwargs: Any,
+    ):
+        """Procesa un archivo PDF o imagen bajo el perfil general 'notebook'.
+
+        Retorna una tupla (markdown_text, notebook_doc) y persiste el layout
+        canónico en <output_dir>/<stem>/.
+        """
+        from .profiles.notebook import NotebookProfile
+        profile = NotebookProfile(
+            agent=self,
+            output_base_dir=output_dir,
+            vision_model=vision_model,
+            config=config,
+        )
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+
     def process_diagram(
         self,
         image_path: str | Path,

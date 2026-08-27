@@ -38,3 +38,19 @@ def get_ocr_worker_timeout() -> int:
         return timeout if timeout > 0 else 1800
     except (ValueError, TypeError):
         return 1800
+
+
+from .schemas.notebook import NotebookConfig, NotebookSectionConfig
+
+__all__ = [
+    "setup_encoding",
+    "get_lm_studio_url",
+    "get_lm_studio_api_key",
+    "get_lm_studio_vision_model",
+    "get_lm_studio_text_model",
+    "get_lm_studio_legacy_model",
+    "get_lm_studio_timeout",
+    "get_ocr_worker_timeout",
+    "NotebookConfig",
+    "NotebookSectionConfig",
+]

@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "case_id": "case_04_mixed",
+  "document": {
+    "source_file": "case_04_mixed.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "header": {
+          "objetivo": {
+            "raw": "Evaluacion parcela experimental",
+            "normalized": "Evaluacion parcela experimental",
+            "source_page": 1,
+            "uncertain": false,
+            "alternatives": []
+          },
+          "fecha": {
+            "raw": "2026-05-15",
+            "normalized": "2026-05-15",
+            "source_page": 1,
+            "uncertain": false,
+            "alternatives": []
+          },
+          "asistentes": {
+            "raw": "CR, MR",
+            "normalized": "CR, MR",
+            "source_page": 1,
+            "uncertain": false,
+            "alternatives": []
+          },
+          "equipamiento": null,
+          "situacion_atmosferica": null,
+          "especies_declaradas": {
+            "raw": "P;H;R;M",
+            "normalized": "P;H;R;M",
+            "source_page": 1,
+            "uncertain": false,
+            "alternatives": []
+          },
+          "source_page": 1
+        },
+        "rows": [
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "30",
+              "normalized": 30,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "33.0",
+              "normalized": 33.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "201",
+              "normalized": "201",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "61",
+              "normalized": "61",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "29",
+              "normalized": 29,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "H",
+              "normalized": "H",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "28.0",
+              "normalized": 28.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "62",
+              "normalized": "62",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "28",
+              "normalized": 28,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "R",
+              "normalized": "R",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "25.5",
+              "normalized": 25.5,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "63",
+              "normalized": "63",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "27",
+              "normalized": 27,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "M",
+              "normalized": "M",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "30.0",
+              "normalized": 30.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "202",
+              "normalized": "202",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "65",
+              "normalized": "65",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "fruto cuajado",
+              "normalized": "fruto cuajado",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          }
+        ],
+        "additional_text": null,
+        "warnings": []
+      }
+    ],
+    "header": {
+      "objetivo": {
+        "raw": "Evaluacion parcela experimental",
+        "normalized": "Evaluacion parcela experimental",
+        "source_page": 1,
+        "uncertain": false,
+        "alternatives": []
+      },
+      "fecha": {
+        "raw": "2026-05-15",
+        "normalized": "2026-05-15",
+        "source_page": 1,
+        "uncertain": false,
+        "alternatives": []
+      },
+      "asistentes": {
+        "raw": "CR, MR",
+        "normalized": "CR, MR",
+        "source_page": 1,
+        "uncertain": false,
+        "alternatives": []
+      },
+      "equipamiento": null,
+      "situacion_atmosferica": null,
+      "especies_declaradas": {
+        "raw": "P;H;R;M",
+        "normalized": "P;H;R;M",
+        "source_page": 1,
+        "uncertain": false,
+        "alternatives": []
+      },
+      "source_page": null
+    },
+    "warnings": [],
+    "additional_texts": []
+  },
+  "metadata": {}
+}

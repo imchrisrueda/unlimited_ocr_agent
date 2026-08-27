@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "case_id": "case_03_handwritten",
+  "document": {
+    "source_file": "case_03_handwritten.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "header": null,
+        "rows": [
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "22.0",
+              "normalized": 22.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "101",
+              "normalized": "101",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "51",
+              "normalized": "51",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "inicio floracion",
+              "normalized": "inicio floracion",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "2",
+              "normalized": 2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "H",
+              "normalized": "H",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "18.5",
+              "normalized": 18.5,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "102",
+              "normalized": "102",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "53",
+              "normalized": "53",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "3",
+              "normalized": 3,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "R",
+              "normalized": "R",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "14.0",
+              "normalized": 14.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "55",
+              "normalized": "55",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "4",
+              "normalized": 4,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "M",
+              "normalized": "M",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "20.0",
+              "normalized": 20.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "59",
+              "normalized": "59",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "plena floracion",
+              "normalized": "plena floracion",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          }
+        ],
+        "additional_text": null,
+        "warnings": []
+      }
+    ],
+    "header": null,
+    "warnings": [],
+    "additional_texts": []
+  },
+  "metadata": {}
+}

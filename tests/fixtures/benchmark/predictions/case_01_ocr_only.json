@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "case_id": "case_01_easy",
+  "pipeline_id": "ocr_only",
+  "document": {
+    "source_file": "case_01_easy.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "header": null,
+        "rows": [
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "26",
+              "normalized": 26,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "Ap",
+              "normalized": null,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "12.0",
+              "normalized": 12.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "43",
+              "normalized": "43",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "22",
+              "normalized": "22",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "25",
+              "normalized": 25,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "Ah",
+              "normalized": null,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "14.5",
+              "normalized": 14.5,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "22",
+              "normalized": "22",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "24",
+              "normalized": 24,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "Ar",
+              "normalized": null,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "8.0",
+              "normalized": 8.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "23",
+              "normalized": "23",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "brote vigoroso",
+              "normalized": "brote vigoroso",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "23",
+              "normalized": 23,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "Mz",
+              "normalized": null,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "16.0",
+              "normalized": 16.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "44",
+              "normalized": "44",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "24",
+              "normalized": "24",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "22",
+              "normalized": 22,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "10.0",
+              "normalized": 10.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "24",
+              "normalized": "24",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          }
+        ],
+        "additional_text": null,
+        "warnings": []
+      }
+    ],
+    "header": null,
+    "warnings": [],
+    "additional_texts": []
+  },
+  "raw_ocr": null,
+  "execution_time_seconds": null,
+  "metadata": {}
+}

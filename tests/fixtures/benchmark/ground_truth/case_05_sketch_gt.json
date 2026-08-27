@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "case_id": "case_05_sketch",
+  "document": {
+    "source_file": "case_05_sketch.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "header": null,
+        "rows": [
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "12.0",
+              "normalized": 12.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "301",
+              "normalized": "301",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "10",
+              "normalized": "10",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "sector norte",
+              "normalized": "sector norte",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "2",
+              "normalized": 2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "H",
+              "normalized": "H",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "11.5",
+              "normalized": 11.5,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "302",
+              "normalized": "302",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "10",
+              "normalized": "10",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "sector sur",
+              "normalized": "sector sur",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          }
+        ],
+        "additional_text": "Croquis de distribucion de parcelas A y B",
+        "warnings": []
+      }
+    ],
+    "header": null,
+    "warnings": [],
+    "additional_texts": []
+  },
+  "metadata": {}
+}

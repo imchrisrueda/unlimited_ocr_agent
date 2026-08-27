@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "case_id": "case_02_hard",
+  "pipeline_id": "ocr_plus_vlm",
+  "document": {
+    "source_file": "case_02_hard.pdf",
+    "pages": [
+      {
+        "page_number": 1,
+        "header": null,
+        "rows": [
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "10",
+              "normalized": 10,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "M",
+              "normalized": "M",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "5.5",
+              "normalized": 5.5,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "12",
+              "normalized": "12",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "18",
+              "normalized": "18",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "1",
+              "normalized": 1,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "9",
+              "normalized": 9,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "6.0",
+              "normalized": 6.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "19",
+              "normalized": "19",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "2",
+              "normalized": 2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "10",
+              "normalized": 10,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "H",
+              "normalized": "H",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "11.2",
+              "normalized": 11.2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": {
+              "raw": "13",
+              "normalized": "13",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "bbch": {
+              "raw": "21",
+              "normalized": "21",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": {
+              "raw": "amarilleamiento",
+              "normalized": "amarilleamiento",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "2",
+              "normalized": 2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "9",
+              "normalized": 9,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "R",
+              "normalized": "R",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "15.0",
+              "normalized": 15.0,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "21",
+              "normalized": "21",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          },
+          {
+            "id": null,
+            "col": {
+              "raw": "2",
+              "normalized": 2,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "fil": {
+              "raw": "8",
+              "normalized": 8,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "especie": {
+              "raw": "P",
+              "normalized": "P",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "altura_cm": {
+              "raw": "7.8",
+              "normalized": 7.8,
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "foto": null,
+            "bbch": {
+              "raw": "22",
+              "normalized": "22",
+              "source_page": 1,
+              "uncertain": false,
+              "alternatives": []
+            },
+            "observaciones": null,
+            "source_page": 1
+          }
+        ],
+        "additional_text": null,
+        "warnings": []
+      }
+    ],
+    "header": null,
+    "warnings": [],
+    "additional_texts": []
+  },
+  "raw_ocr": null,
+  "execution_time_seconds": null,
+  "metadata": {}
+}

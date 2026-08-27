@@ -276,3 +276,80 @@ $env:RUN_ESTADILLO_INTEGRATION="1"
 $env:LM_STUDIO_VISION_MODEL="qwen/qwen3.5-9b"
 .\.venv\Scripts\python.exe -m unittest tests.test_profile_estadillo.TestRealEstadilloProfileIntegration.test_real_estadillo_e2e_on_pdf -v
 ```
+
+## Benchmark y Métricas Reproducibles para Estadillos
+
+El módulo `src/fieldnotes/benchmark/` proporciona un sistema de evaluación cuantitativa **offline, determinista y auditable** para medir la calidad de extracción de notas de campo frente a verdad de referencia manual, antes de optimizar prompts o modelos.
+
+### Preparación del Dataset Manual y Privacidad
+
+Para evaluar de forma rigurosa los pipelines de extracción:
+1. **Selección representativa:** Se recomienda preparar un conjunto de **20 a 30 páginas reales** que cubra la variabilidad del dominio:
+   - Estadillos impresos / tipografiados fáciles.
+   - Estadillos difíciles con tablas deterioradas o columnas divididas.
+   - Texto y tablas puramente manuscritos con anotaciones cursivas.
+   - Páginas mixtas con cabecera de metadatos, tabla y notas al pie.
+   - Croquis de campo y esquemas (catalogados en PR 8 con `evaluate_structured=False`; su evaluación estructural se abordará en PR 9/10 con DiagramIR).
+2. **Privacidad estricta:** Los documentos reales sensibles y PDFs con datos privados (incluyendo `26-05-06.pdf`) **no deben versionarse en repositorios públicos ni compartirse en Git**.
+3. **Fixtures sintéticos anonimizados:** El repositorio incluye un dataset fixture mínimo y completamente sintético en `tests/fixtures/benchmark/` para verificación continua offline (`case_01_easy`, `case_02_hard`, `case_03_handwritten`, `case_04_mixed`, `case_05_sketch`).
+   > [!IMPORTANT]
+   > **Aviso sobre datos sintéticos:** Las predicciones y resultados versionados en los fixtures son **puramente sintéticos y artificiales**, diseñados para probar la infraestructura de ejecución, esquemas y determinismo en CI/CD offline. **NO demuestran ni pretenden demostrar superioridad empírica real de ningún modelo sobre otro**. La evaluación científica real requiere la anotación manual de 20 a 30 páginas reales con ejecuciones fuera de Git.
+4. **Verdad de referencia manual:** La verdad de referencia debe anotarse manualmente mediante el esquema canónico `EstadilloDocument` y permanecer inmutable durante la ejecución. El benchmark nunca inventa ni auto-completa ground truth a partir de predicciones.
+
+### Estructura de Formatos y Esquemas Versionados
+
+- **`manifest.json` (`BenchmarkManifest`):** Manifiesto del dataset con versión de esquema, metadatos, configuración de pipelines a evaluar y lista de casos con rutas confinadas y flag `evaluate_structured` (para excluir croquis sin métricas tabulares).
+- **`ground_truth/<caso>_gt.json` (`GroundTruthDocument`):** Documento canónico `EstadilloDocument` con la verdad de referencia anotada manualmente.
+- **`predictions/<caso>_<pipeline>.json` (`BenchmarkPrediction`):** Documento canónico `EstadilloDocument` con la salida estructurada producida por un pipeline.
+- **`report.json` / `report.md` (`BenchmarkReport`):** Informes agregado estructurado y resumen Markdown deterministas con conteos completos.
+
+### Emparejamiento Global Determinista 1-a-1 sin Circularidad (Leave-One-Field-Out)
+
+El algoritmo de matching (`src/fieldnotes/benchmark/matching.py`):
+1. **Asignación global óptima (Húngaro / Kuhn-Munkres):** Resuelve el problema de asignación bipartita máxima en $O(N^3)$ garantizando una solución globalmente óptima frente a los fallos de emparejamiento subóptimo del greedy local.
+2. **No circularidad estricta (Leave-One-Field-Out / LOFO):** Para evaluar la exactitud de cada campo individual (`col_exact`, `fil_exact`, `species_exact`, `height_exact`, `photo_exact`, `bbch_exact`), el propio campo objetivo se excluye completamente del cálculo de similitud y asignación. De este modo, una predicción nunca causa su propio emparejamiento.
+3. **Evidencia multi-campo suficiente:** Exige identidad explícita por `id` exacto o concordancia en **al menos dos campos no vacíos evaluados**. Filas con una única coincidencia aislada (como un BBCH idéntico en filas completamente distintas) se rechazan (`score = 0.0`), impidiendo el autoemparejamiento artificial de registros espurios.
+4. **Exclusión de croquis/sketch:** Casos catalogados con `evaluate_structured=false` (`case_05_sketch`) no se evalúan tabularmente ni afectan a los denominadores o métricas agregadas globales.
+5. **Uno-a-uno estricto:** Cada fila de referencia se asigna a lo sumo a una fila de predicción y viceversa. Filas duplicadas en predicción se asignan una sola vez y las réplicas se penalizan como falsos positivos (`unmatched_predicted`).
+6. **Manejo de anomalías y desempate estable:** Maneja de forma robusta filas reordenadas, faltantes, extras y duplicadas con ordenación jerárquica determinista (`score > num_matches > page_diff > idx_diff > ref_idx > pred_idx`).
+
+### Las 8 Métricas Obligatorias y Semántica de Denominador Cero
+
+Todas las métricas son puras, deterministas y reportan numerador, denominador y cociente en `[0.0, 1.0]` (nunca `NaN` ni `Infinity`). El esquema `MetricValue` valida estrictamente que `numerator <= denominator` y rechaza conteos imposibles sin recurrir a clamp que oculte invariantes rotas:
+
+| Métrica | Descripción | Política de Cálculo |
+|---|---|---|
+| `row_precision` | Precisión de registros | `matched_rows / total_predicted_rows` (1.0 si ambos 0; 0.0 si pred > 0 y matched = 0) |
+| `row_recall` | Recuperación de registros | `matched_rows / total_reference_rows` (1.0 si ambos 0; 0.0 si ref > 0 y matched = 0) |
+| `col_exact` | Exactitud en columna | Aciertos de `col` en pares emparejados bajo LOFO `col` / `matched_lofo_col` |
+| `fil_exact` | Exactitud en fila | Aciertos de `fil` en pares emparejados bajo LOFO `fil` / `matched_lofo_fil` |
+| `species_exact` | Exactitud canónica en especie | Mapeo canónico (`Ap` $\rightarrow$ `P`, `Ah` $\rightarrow$ `H`, `Ar` $\rightarrow$ `R`, `Mz` $\rightarrow$ `M`) bajo LOFO `especie` |
+| `height_exact` | Exactitud exacta en altura | Comparación numérica exacta en cm sin tolerancias ocultas bajo LOFO `altura_cm` |
+| `photo_exact` | Exactitud en foto | Comparación textual exacta de referencia fotográfica bajo LOFO `foto` |
+| **`bbch_exact`** | **Exactitud fenológica BBCH** | **Comparación canónica exacta del código BBCH bajo LOFO `bbch` (destacada en informes)** |
+
+**Política de valores ausentes en pares emparejados:**
+- Ausente / Ausente: Se considera coincidencia exacta (+1 acierto).
+- Presente / Ausente o Ausente / Presente: Se considera discrepancia (+0 acierto).
+- Presente / Presente: Comparación canónica estricta del valor.
+
+### Ejecución del Benchmark por CLI y Determinismo por Defecto
+
+Ejecución offline sobre el dataset fixture anonimizado:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.fieldnotes.benchmark --manifest tests/fixtures/benchmark/manifest.json --output-dir ./benchmark_output
+```
+
+Opciones principales:
+- `--manifest <ruta>`: Ruta al archivo `manifest.json`.
+- `--dataset-dir <ruta>`: Directorio raíz para resolver rutas relativas confinadas.
+- `--output-dir <ruta>` / `-o <ruta>`: Directorio de salida autorizado donde se guardan de forma atómica los archivos canónicos `report.json` y `report.md`.
+- `--pipelines <p1> <p2>`: Filtrar pipelines específicos a evaluar (valida existencia en manifiesto).
+- `--timestamp <ISO>`: Opcional. Por defecto, `generated_at` se deriva canónicamente del campo `created_at` del manifiesto, garantizando que dos ejecuciones CLI sucesivas generen artefactos byte-a-byte idénticos.
+
+### Comparación Inicial: Unlimited-OCR solo vs. Unlimited-OCR + Qwen 3.5 9B
+
+La evaluación comparativa sobre el dataset de prueba refleja las diferencias estructurales entre ambos enfoques:
+1. **Unlimited-OCR directo (`ocr_only`):** Funciona como extractor base rápido, pero en tablas manuscritas o complejas presenta errores de desplazamiento de columnas, confusión en dígitos BBCH manuscritos (p. ej. `53` vs `58`) y especies sin normalizar (`Ap`, `Mz`).
+2. **Unlimited-OCR + Qwen 3.5 9B (`ocr_plus_vlm`):** Al utilizar la imagen original como fuente primaria de evidencia y el OCR como hipótesis auxiliar estructurada mediante esquemas Pydantic, corrige desplazamientos de columnas, normaliza especies canónicamente y resuelve códigos fenológicos BBCH ambiguos con mayor exactitud.

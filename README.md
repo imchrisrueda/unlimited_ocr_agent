@@ -53,6 +53,14 @@ $env:LM_STUDIO_API_KEY = "lm-studio"
 $env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
 $env:LM_STUDIO_TEXT_MODEL = "identificador-del-qwen"
 ```
+`identificador-del-qwen-multimodal` e `identificador-del-qwen` son marcadores: no los copies literalmente. El modelo de visión debe estar cargado en LM Studio y aceptar imágenes. Por ejemplo, si LM Studio anuncia `qwen/qwen3.5-9b` como modelo multimodal, configúralo así:
+
+```powershell
+$env:LM_STUDIO_VISION_MODEL = "qwen/qwen3.5-9b"
+$env:LM_STUDIO_TEXT_MODEL = "qwen/qwen3.8-27b"
+```
+
+Los identificadores disponibles dependen de los modelos cargados localmente. Si el configurado no aparece, la aplicación mostrará los identificadores anunciados. Carga un modelo Qwen-VL/multimodal y usa su identificador exacto.
 
 Puedes pasar el modelo directamente con `--vision-model`. Usa exactamente el identificador que expone LM Studio.
 
@@ -64,8 +72,19 @@ Puedes pasar el modelo directamente con `--vision-model`. Usa exactamente el ide
 .\.venv\Scripts\python.exe agent.py 26-05-06.pdf --profile estadillo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
 ```
 
-Produce `<fecha>/notas.md` y `<fecha>/datos.csv`. Si la fecha no está respaldada de forma inequívoca, conserva un directorio seguro basado en el archivo y registra `SESSION_DATE_UNRESOLVED` para revisión humana.
+Genera la entrega canónica `<fecha>/notas.md` y `<fecha>/datos.csv`, y el libro de revisión `<fecha>/review/datos.xlsx`. Si la fecha no está respaldada de forma inequívoca, conserva un directorio seguro basado en el archivo y registra `SESSION_DATE_UNRESOLVED`.
 
+Para revisar en Excel:
+
+1. Abre `review/datos.xlsx` y corrige los registros.
+2. Guarda el libro con el mismo nombre.
+3. Publica los cambios en el CSV canónico:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\2026-05-06
+```
+
+El comando valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y escribe `datos.csv` en UTF-8, con comas como delimitador y punto decimal. Si encuentra un valor inválido, no publica nada.
 ### OCR directo
 
 ```powershell
@@ -224,7 +243,7 @@ $env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
 .\.venv\Scripts\python.exe agent.py documento.pdf --profile estadillo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
 ```
 
-La salida debe contener `notas.md`, `datos.csv` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
+La salida debe contener `notas.md`, `datos.csv`, `review/datos.xlsx` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
 
 Para supervisar una ejecución real en segundo plano, usa un nombre distinto de `$PID`, que es una variable reservada de PowerShell:
 

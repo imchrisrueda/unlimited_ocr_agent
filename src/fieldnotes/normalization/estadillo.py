@@ -2,6 +2,7 @@ import copy
 from typing import Optional, Dict
 from src.fieldnotes.schemas.estadillo import EstadilloDocument
 from src.fieldnotes.schemas.warnings import ExtractionWarning
+from src.fieldnotes.schemas.evidence import EvidenceValue
 
 # Mapeos de especies autorizados por AGENTS.md (case-insensitive, trimmed)
 _AUTHORIZED_SPECIES_MAP: Dict[str, str] = {
@@ -73,5 +74,72 @@ def normalize_species(doc: EstadilloDocument) -> EstadilloDocument:
         if key not in existing_keys:
             new_doc.warnings.append(w)
             existing_keys.add(key)
+
+    return new_doc
+
+
+def complete_implied_coordinates(doc: EstadilloDocument) -> EstadilloDocument:
+    """Complete coordinate cells implied by the fixed estadillo table layout.
+
+    A blank ``col`` keeps the last explicit column until another column is
+    explicitly written. A blank ``fil`` is completed only when a unitary
+    ascending or descending sequence can be demonstrated from neighbouring
+    explicit row values in that column. This operation is pure and idempotent.
+    """
+    new_doc = doc.model_copy(deep=True)
+
+    for page in new_doc.pages:
+        last_col: Optional[int] = None
+        grouped_rows: Dict[int, list] = {}
+
+        for row in page.rows:
+            if row.col is not None and isinstance(row.col.normalized, int):
+                last_col = row.col.normalized
+            elif last_col is not None:
+                row.col = EvidenceValue[int](
+                    normalized=last_col,
+                    source_page=row.source_page,
+                )
+
+            if row.col is not None and isinstance(row.col.normalized, int):
+                grouped_rows.setdefault(row.col.normalized, []).append(row)
+
+        for rows in grouped_rows.values():
+            explicit = [
+                (index, row.fil.normalized)
+                for index, row in enumerate(rows)
+                if row.fil is not None and isinstance(row.fil.normalized, int)
+            ]
+            directions = {
+                1 if current_value > previous_value else -1
+                for (previous_index, previous_value), (current_index, current_value) in zip(explicit, explicit[1:])
+                if current_value != previous_value
+                and abs(current_value - previous_value) == current_index - previous_index
+            }
+            if len(directions) != 1:
+                continue
+            direction = directions.pop()
+
+            for index, row in enumerate(rows):
+                if row.fil is not None and isinstance(row.fil.normalized, int):
+                    continue
+                previous = next(
+                    ((known_index, value) for known_index, value in reversed(explicit) if known_index < index),
+                    None,
+                )
+                following = next(
+                    ((known_index, value) for known_index, value in explicit if known_index > index),
+                    None,
+                )
+                if previous is not None:
+                    inferred = previous[1] + direction * (index - previous[0])
+                elif following is not None:
+                    inferred = following[1] - direction * (following[0] - index)
+                else:
+                    continue
+                row.fil = EvidenceValue[int](
+                    normalized=inferred,
+                    source_page=row.source_page,
+                )
 
     return new_doc

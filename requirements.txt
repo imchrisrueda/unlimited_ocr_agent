@@ -11,3 +11,4 @@ easydict
 matplotlib
 psutil
 requests
+openpyxl>=3.1,<4

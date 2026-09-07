@@ -1,7 +1,7 @@
 import unittest
 from src.fieldnotes.schemas.evidence import EvidenceValue
 from src.fieldnotes.schemas.estadillo import EstadilloDocument, EstadilloPage, EstadilloRow
-from src.fieldnotes.normalization.estadillo import normalize_species
+from src.fieldnotes.normalization.estadillo import normalize_species, complete_implied_coordinates
 
 
 class TestSpeciesNormalization(unittest.TestCase):
@@ -99,6 +99,30 @@ class TestSpeciesNormalization(unittest.TestCase):
         self.assertEqual(len(pass2.warnings), 1)
         self.assertEqual(pass1.model_dump_json(), pass2.model_dump_json())
 
+    def test_complete_implied_coordinates_fills_columns_and_both_row_directions(self):
+        def int_ev(value: int) -> EvidenceValue[int]:
+            return EvidenceValue[int](raw=str(value), normalized=value, source_page=1)
+
+        rows = [
+            EstadilloRow(source_page=1, col=int_ev(1), fil=int_ev(26)),
+            EstadilloRow(source_page=1),
+            EstadilloRow(source_page=1, fil=int_ev(24)),
+            EstadilloRow(source_page=1, col=int_ev(2), fil=int_ev(1)),
+            EstadilloRow(source_page=1),
+            EstadilloRow(source_page=1, fil=int_ev(3)),
+        ]
+        document = EstadilloDocument(
+            source_file="sample.pdf",
+            pages=[EstadilloPage(page_number=1, rows=rows)],
+        )
+
+        completed = complete_implied_coordinates(document)
+        completed_rows = completed.pages[0].rows
+
+        self.assertEqual([row.col.normalized for row in completed_rows], [1, 1, 1, 2, 2, 2])
+        self.assertEqual([row.fil.normalized for row in completed_rows], [26, 25, 24, 1, 2, 3])
+        self.assertIsNone(document.pages[0].rows[1].col)
+        self.assertIsNone(document.pages[0].rows[1].fil)
 
 if __name__ == "__main__":
     unittest.main()

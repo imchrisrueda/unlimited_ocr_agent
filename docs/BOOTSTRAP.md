@@ -29,7 +29,7 @@ nvidia-smi
 
 | Necesidad | Perfil | Entrega principal |
 | --- | --- | --- |
-| Estadillo agronómico o forestal | `estadillo` | `notas.md` y `datos.csv` |
+| Estadillo agronómico o forestal | `estadillo` | `notas.md`, `datos.csv` y `review/datos.xlsx` |
 | Cuaderno visual y secuencial | `cuaderno_campo` | `cuaderno_campo.md` |
 | Documento mixto heredado | `notebook` | `notebook.md` |
 | OCR sin VLM | `--raw` | Texto OCR |
@@ -51,8 +51,10 @@ output_ocr/<sesión>/
 ├── document.json
 ├── pages/
 ├── raw/
-└── review/issues.json
-```
+├── assets/
+└── review/
+    ├── datos.xlsx
+    └── issues.json```
 
 La fecha ISO se usa como carpeta únicamente si aparece de forma inequívoca. La cabecera CSV es:
 

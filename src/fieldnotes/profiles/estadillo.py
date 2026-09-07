@@ -16,8 +16,9 @@ from src.fieldnotes.review.issues import (
 )
 from src.fieldnotes.review.crops import generate_review_crops_for_issues
 from src.fieldnotes.merge.estadillo import merge_estadillo_pages
-from src.fieldnotes.normalization.estadillo import normalize_species
+from src.fieldnotes.normalization.estadillo import normalize_species, complete_implied_coordinates
 from src.fieldnotes.validation.estadillo import validate_estadillo_document
+from src.fieldnotes.render.excel import export_estadillo_xlsx
 from src.fieldnotes.render.estadillo_delivery import (
     render_estadillo_csv,
     render_estadillo_notes,
@@ -43,7 +44,7 @@ INSTRUCCIONES DE EXTRACCIÓN:
    - Extrae TODAS las filas de la tabla de datos de la página en la lista 'rows' (sin omitir ninguna fila visible ni devolver la lista vacía si hay datos).
    - Campos de cada fila:
      * 'id': Identificador o null si no está presente
-     * 'col': Número de columna (p. ej. 1). Si se indica al inicio y se deja en blanco en las siguientes filas de la misma columna, extrae 1 en la primera fila y null en las filas donde no esté explícitamente reescrita.
+     * 'col': Numero de columna. Si se indica al inicio y las filas posteriores quedan en blanco, devuelve null en esas celdas: el programa conserva la columna anterior hasta que una nueva fila indique otra columna.
      * 'fil': Número de fila (p. ej. 26, 25, 24...)
      * 'especie': Código de especie (p. ej. "Ah", "Ap", "Ar", "Mz")
      * 'altura_cm': Altura (número decimal o entero, p. ej. 5.5, 12, o null si está en blanco)
@@ -289,9 +290,10 @@ class EstadilloProfile:
 
             # 4. Pure Species Normalization
             norm_doc = normalize_species(merged_doc)
+            completed_doc = complete_implied_coordinates(norm_doc)
 
             # 5. Pure Deterministic Validation
-            validated_doc = validate_estadillo_document(norm_doc)
+            validated_doc = validate_estadillo_document(completed_doc)
 
             # 6. Resolver la sesión sin inventar fechas y renderizar la entrega canónica.
             session_date = resolve_session_date(validated_doc)
@@ -355,6 +357,7 @@ class EstadilloProfile:
             write_atomic_file(csv_path, csv_output)
             write_atomic_file(document_json_path, validated_doc.model_dump_json(indent=2))
             write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
+            export_estadillo_xlsx(validated_doc, staging_review_dir / "datos.xlsx")
 
             # 9. Publicación atómica de staging a canonical_dir con rollback
             if canonical_dir.exists():

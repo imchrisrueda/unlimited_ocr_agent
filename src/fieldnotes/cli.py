@@ -18,9 +18,9 @@ def build_parser():
     parser.add_argument("file_path", help="Ruta de la imagen o archivo PDF a digitalizar")
     parser.add_argument(
         "--profile",
-        choices=("default", "estadillo", "notebook"),
+        choices=("default", "estadillo", "notebook", "cuaderno_campo"),
         default="default",
-        help="Perfil de dominio para procesamiento estructurado (p. ej. 'estadillo', 'notebook')",
+        help="Perfil de dominio: 'estadillo', 'cuaderno_campo', 'notebook' o 'default'",
     )
     parser.add_argument(
         "--config",
@@ -149,7 +149,7 @@ def main(args=None):
     )
 
     # Pre-validación de --config
-    if parsed_args.config and parsed_args.profile != "notebook":
+    if parsed_args.config and parsed_args.profile not in ("notebook", "cuaderno_campo"):
         parser.error("--config solo es compatible con --profile notebook")
 
     # Validaciones específicas de --profile estadillo ANTES de instanciar agente u OCR
@@ -238,24 +238,24 @@ def main(args=None):
 
         return
 
-    # Validaciones específicas de --profile notebook ANTES de instanciar agente u OCR
-    if parsed_args.profile == "notebook":
+    # Validaciones de los perfiles notebook y cuaderno_campo antes de iniciar OCR
+    if parsed_args.profile in ("notebook", "cuaderno_campo"):
         if parsed_args.raw:
-            parser.error("--raw no es compatible con --profile notebook")
+            parser.error(f"--raw no es compatible con --profile {parsed_args.profile}")
         if parsed_args.ask_vision:
-            parser.error("--ask-vision no es compatible con --profile notebook")
+            parser.error(f"--ask-vision no es compatible con --profile {parsed_args.profile}")
         if parsed_args.chunk_size > 0:
-            parser.error("--chunk-size no es compatible con --profile notebook")
+            parser.error(f"--chunk-size no es compatible con --profile {parsed_args.profile}")
         if parsed_args.export_md:
             parser.error(
-                "--export-md no es compatible con --profile notebook; "
-                "la salida canónica se persiste automáticamente en <output>/<fecha>/notas.md y datos.csv"
+                f"--export-md no es compatible con --profile {parsed_args.profile}; "
+                "la salida Markdown canónica se persiste automáticamente dentro de <output>/<documento>/"
             )
         if parsed_args.export_pdf:
-            parser.error("--export-pdf no es compatible con --profile notebook")
+            parser.error(f"--export-pdf no es compatible con --profile {parsed_args.profile}")
         if not vision_model:
             parser.error(
-                "Para usar --profile notebook debe especificarse un modelo de visión mediante "
+                f"Para usar --profile {parsed_args.profile} debe especificarse un modelo de visión mediante "
                 "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
             )
 
@@ -290,7 +290,7 @@ def main(args=None):
         effective_max_tokens = (
             4096 if parsed_args.max_tokens == 2048 else parsed_args.max_tokens
         )
-        final_result, doc_result = agent.process_notebook(
+        final_result, doc_result = (agent.process_cuaderno_campo if parsed_args.profile == "cuaderno_campo" else agent.process_notebook)(
             file_path=parsed_args.file_path,
             output_dir=parsed_args.output,
             config=notebook_config,
@@ -322,13 +322,21 @@ def main(args=None):
             except Exception:
                 total_review_items = 0
 
-        print(
-            f"\n[PERFIL NOTEBOOK] Procesamiento completado: {total_pages} páginas, "
-            f"{total_rows} filas de estadillo, {total_sections} secciones, "
-            f"{total_tables} tablas, {total_diagrams} diagramas, "
-            f"{total_warnings} advertencias detectadas, "
-            f"{total_review_items} elementos que requieren revisión."
-        )
+        if parsed_args.profile == "cuaderno_campo":
+            summary = (
+                f"\n[PERFIL CUADERNO_CAMPO] Procesamiento completado: {total_pages} páginas, "
+                f"{total_sections} secciones, {total_tables} tablas generales, "
+                f"{total_diagrams} figuras, {total_warnings} advertencias, "
+                f"{total_review_items} elementos para revisión."
+            )
+        else:
+            summary = (
+                f"\n[PERFIL NOTEBOOK] Procesamiento completado: {total_pages} páginas, "
+                f"{total_rows} filas de estadillo, {total_sections} secciones, "
+                f"{total_tables} tablas, {total_diagrams} diagramas, "
+                f"{total_warnings} advertencias, {total_review_items} elementos para revisión."
+            )
+        print(summary)
 
         print("\nRESPUESTA DEL AGENTE:")
         print(final_result)

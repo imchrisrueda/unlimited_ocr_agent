@@ -16,6 +16,10 @@ output_ocr/
 
 `notas.md` conserva los metadatos y enlaza explícitamente `datos.csv`. El CSV contiene una fila por registro. La convención y la [guía de análisis con Qwen](docs/QWEN_ANALYSIS_GUIDE.md) permiten relacionar ambos artefactos y comparar varias fechas sin inventar tendencias, causalidad ni datos ausentes.
 
+## Inicio rápido
+
+Para instalación, validación, ejecución, revisión y supervisión de recursos, consulta el [manual paso a paso](docs/BOOTSTRAP.md).
+
 ## Requisitos
 
 - Windows o Linux con Python 3.11 y [uv](https://docs.astral.sh/uv/).
@@ -27,8 +31,9 @@ output_ocr/
 ## Instalación reproducible
 
 ```powershell
-git clone <URL_DEL_REPOSITORIO>
+git clone https://github.com/imchrisrueda/unlimited_ocr_agent.git
 cd unlimited_ocr_agent
+git switch codex/pr1-safe-refactor
 uv venv --python 3.11
 .\.venv\Scripts\python.exe setup_env.py
 ```
@@ -75,6 +80,8 @@ Extrae texto sin consultar a Qwen.
 .\.venv\Scripts\python.exe agent.py documento.pdf "Extrae los hechos presentes" --text-model "identificador-del-qwen"
 ```
 
+Es una respuesta interpretativa; no la uses como entrega canónica ni para completar datos ausentes. Para digitalización trazable usa --profile estadillo.
+
 ### Visión general
 
 ```powershell
@@ -89,6 +96,14 @@ Extrae texto sin consultar a Qwen.
 
 El perfil `notebook` mantiene su salida `notebook.md` para documentos mixtos; no sustituye el contrato específico de estadillo.
 
+Para cuadernos visuales usa `--profile cuaderno_campo`: genera `cuaderno_campo.md` en orden de página, sin tablas de estadillo. Cada figura se reconstruye con el VLM; los flujos se incluyen como Mermaid y después se inserta la imagen original.
+
+```powershell
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile cuaderno_campo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
+```
+
+La extracción textual y la extracción de figuras se ejecutan en pasadas VLM separadas. Si una referencia visual es inválida, se descarta y queda advertida; nunca se crea una entidad para repararla.
+
 ## Flujo de decisión
 
 ```mermaid
@@ -99,17 +114,20 @@ flowchart TD
     B -->|Análisis visual libre| E[--ask-vision]
     B -->|Estadillo de campo| F[--profile estadillo]
     B -->|Cuaderno mixto| G[--profile notebook]
+    B -->|Cuaderno visual| Q[--profile cuaderno_campo]
     C --> H[OCR]
     D --> H
     E --> H
     F --> H
     G --> H
+    Q --> H
     H --> I{¿Qwen necesario?}
     I -->|No, raw| J[Texto OCR]
     I -->|Sí| K[LM Studio / Qwen]
     K --> L{Perfil}
     L -->|Estadillo| M[fecha/notas.md + datos.csv]
     L -->|Notebook| N[notebook.md + evidencias]
+    L -->|Cuaderno campo| R[cuaderno_campo.md + original + Mermaid o SVG]
     L -->|Default| O[Respuesta o exportación]
     M --> P[Revisión de issues y evidencia]
 ```
@@ -137,12 +155,93 @@ La fuente normativa es [`AGENTS.md`](AGENTS.md), y [`gt/`](gt/) es la referencia
 git diff --check
 ```
 
-La prueba real con GPU, Unlimited-OCR y LM Studio es optativa:
+### Pruebas de integración real (optativas)
+
+Las pruebas anteriores son locales y no necesitan GPU ni LM Studio. Estas pruebas usan `26-05-06.pdf` y pueden cargar Unlimited-OCR o consultar LM Studio, por lo que se desactivan por defecto.
+
+Antes de ejecutarlas, comprueba que la GPU y el modelo de visión estén disponibles:
 
 ```powershell
+nvidia-smi
+$env:LM_STUDIO_URL = "http://localhost:1234"
+$env:LM_STUDIO_API_KEY = "lm-studio"
+$env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
+```
+
+Ejecuta cada prueba de forma independiente:
+
+```powershell
+# OCR directo: texto, páginas y raw/document.md
+$env:RUN_OCR_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_ocr.TestRealOCRIntegration
+
+# OCR en worker: aislamiento de Torch, seis páginas y liberación de VRAM
+$env:RUN_OCR_WORKER_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_ocr.TestRealOCRWorkerIntegration
+
+# Estadillo: estructura canónica, CSV y al menos 50 registros
 $env:RUN_ESTADILLO_INTEGRATION = "1"
 .\.venv\Scripts\python.exe -m unittest tests.test_profile_estadillo.TestRealEstadilloProfileIntegration
+
+# Revisión de estadillo: issues.json, crops válidos y sin PNG huérfanos
+.\.venv\Scripts\python.exe -m unittest tests.test_review.TestRealEstadilloReviewIntegration
+
+# Notebook: estructura y artefactos de notebook.md
+$env:RUN_NOTEBOOK_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_profile_notebook.TestRealNotebookProfileIntegration
+
+# LM Studio: respuesta visual no vacía
+$env:RUN_LMSTUDIO_VISION_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_vlm.TestRealLMStudioVisionIntegration
+
+# LM Studio: salida estructurada y evidencia por página
+$env:RUN_LMSTUDIO_STRUCTURED_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_structured.TestRealLMStudioStructuredIntegration
+
+# Diagrama: marcador de integración, sin verificaciones reales todavía
+$env:RUN_DIAGRAM_REAL_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_diagram.TestRealDiagramVisionIntegrationOptIn
 ```
+
+La prueba de diagramas solo comprueba su activación; no certifica la extracción de diagramas. Las pruebas reales generan resultados dependientes del modelo cargado: revisa sus artefactos antes de aceptarlos.
+
+Para validar de extremo a extremo `cuaderno_campo` con documentos propios:
+
+```powershell
+.\.venv\Scripts\python.exe agent.py documento_con_diagrama.pdf --profile cuaderno_campo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+.\.venv\Scripts\python.exe agent.py cuaderno_con_croquis.pdf --profile cuaderno_campo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+```
+
+Comprueba que `documento_con_diagrama/cuaderno_campo.md` contiene Mermaid, que `cuaderno_con_croquis/cuaderno_campo.md` enlaza el SVG reconstruido y que ambos incorporan `pages/page_001.png`. Estas ejecuciones sí validan el flujo real, pero requieren revisión humana porque el resultado depende del VLM.
+### Primera ejecución y supervisión
+
+Tras instalar y superar las pruebas locales, procesa un documento real en una carpeta separada:
+
+```powershell
+$env:LM_STUDIO_URL = "http://localhost:1234"
+$env:LM_STUDIO_API_KEY = "lm-studio"
+$env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile estadillo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+```
+
+La salida debe contener `notas.md`, `datos.csv` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
+
+Para supervisar una ejecución real en segundo plano, usa un nombre distinto de `$PID`, que es una variable reservada de PowerShell:
+
+```powershell
+$logDir = "C:\tmp\ocr-monitor"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$run = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList "agent.py","documento.pdf","--profile","estadillo","--vision-model",$env:LM_STUDIO_VISION_MODEL,"--output","output_ocr" -PassThru -WindowStyle Hidden -RedirectStandardOutput "$logDir\stdout.log" -RedirectStandardError "$logDir\stderr.log"
+$runPid = $run.Id
+while (Get-Process -Id $runPid -ErrorAction SilentlyContinue) {
+  Get-Process -Id $runPid | Select-Object Id,CPU,WorkingSet64
+  nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader
+  Start-Sleep -Seconds 15
+}
+Get-Content "$logDir\stderr.log"
+```
+
+Al terminar, confirma que no quedan procesos `python.exe` asociados al proyecto y que la VRAM volvió al nivel previo. LM Studio puede permanecer activo: es un servicio independiente.
 
 Revisa siempre `review/issues.json` antes de considerar definitiva una digitalización. Los conflictos de cabecera, especies desconocidas, fechas no resueltas y regiones ambiguas requieren validación humana.
 

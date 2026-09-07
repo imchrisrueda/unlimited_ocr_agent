@@ -300,7 +300,9 @@ class LMStudioClient:
 
         sys_prompt = system_prompt or (
             "Eres un agente IA especializado en analizar y digitalizar documentos procesados por OCR. "
-            "Responde de forma precisa, limpia y bien estructurada en formato Markdown."
+            "Responde de forma precisa, limpia y bien estructurada en formato Markdown. "
+            "No inventes, completes ni expandas códigos, nombres, medidas o fechas. "
+            "Conserva las dudas del OCR como dudas y distingue hechos de inferencias."
         )
 
         if context:
@@ -324,7 +326,9 @@ class LMStudioClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        if reasoning_effort and reasoning_effort != "none":
+        # Send "none" explicitly: some local reasoning models otherwise consume
+        # the completion budget in hidden reasoning and return empty content.
+        if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
         if response_format is not None:
             kwargs["response_format"] = response_format
@@ -354,7 +358,9 @@ class LMStudioClient:
             "Eres un agente IA multimodal especializado en digitalizar documentos y notas de campo. "
             "La imagen suministrada es la fuente primaria de evidencia y verdad. "
             "El texto OCR complementario es solo una hipótesis de apoyo que puede contener errores. "
-            "Responde de forma precisa, limpia y fiel a lo visible en la imagen."
+            "Responde de forma precisa, limpia y fiel a lo visible en la imagen. "
+            "No inventes, completes ni expandas códigos, nombres, medidas o fechas. "
+            "Conserva las dudas como dudas y distingue hechos de inferencias."
         )
 
         if ocr_context:
@@ -383,7 +389,9 @@ class LMStudioClient:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        if reasoning_effort and reasoning_effort != "none":
+        # Send "none" explicitly: some local reasoning models otherwise consume
+        # the completion budget in hidden reasoning and return empty content.
+        if reasoning_effort:
             kwargs["reasoning_effort"] = reasoning_effort
         if response_format is not None:
             kwargs["response_format"] = response_format

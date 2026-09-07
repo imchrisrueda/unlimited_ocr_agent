@@ -630,6 +630,7 @@ def dto_to_diagram_ir(
         )
 
     # 3. Areas
+    canonical_warnings: list[ExtractionWarning] = []
     canonical_areas: list[AreaEntity] = []
     for a in dto.areas:
         bbox = (
@@ -647,6 +648,15 @@ def dto_to_diagram_ir(
             if a.polygon is not None
             else None
         )
+        if bbox is None and polygon is None:
+            canonical_warnings.append(
+                ExtractionWarning(
+                    code="DIAGRAM_AREA_GEOMETRY_MISSING",
+                    message=f"Area '{a.id}' descartada: no contiene geometria verificable.",
+                    source_page=effective_page,
+                )
+            )
+            continue
         canonical_areas.append(
             AreaEntity(
                 id=a.id,
@@ -726,12 +736,57 @@ def dto_to_diagram_ir(
             )
         )
 
-    # 8. Warnings
-    canonical_warnings = [
+    # 8. Eliminar referencias rotas sin inventar entidades.
+    point_ids = {p.id for p in canonical_points}
+    filtered_lines: list[LineEntity] = []
+    for line in canonical_lines:
+        broken = (
+            (line.source_point_id is not None and line.source_point_id not in point_ids) or
+            (line.target_point_id is not None and line.target_point_id not in point_ids)
+        )
+        if broken:
+            canonical_warnings.append(ExtractionWarning(
+                code="DIAGRAM_BROKEN_LINE_REFERENCE",
+                message=f"Linea '{line.id}' descartada: referencia puntos inexistentes.",
+                source_page=effective_page,
+            ))
+            continue
+        filtered_lines.append(line)
+    canonical_lines = filtered_lines
+
+    entity_ids = {a.id for a in canonical_areas} | point_ids | {line.id for line in canonical_lines}
+    canonical_labels = [
+        label.model_copy(update={"attached_to_id": None})
+        if label.attached_to_id is not None and label.attached_to_id not in entity_ids
+        else label
+        for label in canonical_labels
+    ]
+    entity_ids |= {label.id for label in canonical_labels}
+    filtered_relations: list[RelationEntity] = []
+    for relation in canonical_relations:
+        if relation.source_id not in entity_ids or relation.target_id not in entity_ids:
+            canonical_warnings.append(ExtractionWarning(
+                code="DIAGRAM_BROKEN_RELATION_REFERENCE",
+                message=f"Relacion '{relation.id}' descartada: referencia entidades inexistentes.",
+                source_page=effective_page,
+            ))
+            continue
+        filtered_relations.append(relation)
+    canonical_relations = filtered_relations
+
+    canonical_geo = [
+        geo.model_copy(update={"associated_point_id": None})
+        if geo.associated_point_id is not None and geo.associated_point_id not in point_ids
+        else geo
+        for geo in canonical_geo
+    ]
+
+    # 9. Warnings
+    canonical_warnings.extend(
         ExtractionWarning(code="VLM_WARNING", message=str(w), source_page=effective_page)
         for w in (dto.warnings or [])
         if str(w).strip()
-    ]
+    )
 
     return DiagramIR(
         schema_version=1,

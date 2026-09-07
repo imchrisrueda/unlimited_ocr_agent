@@ -335,7 +335,7 @@ class TestLMStudioClientExecution(unittest.TestCase):
         kwargs = mock_client.chat.completions.create.call_args.kwargs
 
         self.assertEqual(kwargs["model"], "text_model_1")
-        self.assertNotIn("reasoning_effort", kwargs)
+        self.assertEqual(kwargs["reasoning_effort"], "none")
         self.assertNotIn("response_format", kwargs)
 
     @patch("openai.OpenAI")

@@ -1048,7 +1048,7 @@ class TestNotebookDiagramIntegration(unittest.TestCase):
         md = render_notebook_markdown(doc, config=cfg)
 
         # NO debe haber enlaces a imágenes
-        self.assertNotIn("![", md)
+        self.assertIn("![Página 1](pages/page_001.png)", md)
         self.assertNotIn(".svg", md)
         # SÍ debe haber descripción textual accesible
         self.assertIn("### Croquis Sin SVG", md)

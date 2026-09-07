@@ -8,3 +8,9 @@ ocr_run.log
 build/
 dist/
 *.egg-info/
+resultados_*/
+validation_*/
+*.out.log
+*.err.log
+/diagrama.pdf
+/notas_campo.pdf

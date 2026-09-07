@@ -1,4 +1,4 @@
-﻿import re
+import re
 from typing import Optional, Dict, List
 from ..schemas.diagram import DiagramIR, AreaEntity, PointEntity, LineEntity, LabelEntity, RelationEntity
 from .validation import validate_diagram_ir
@@ -160,6 +160,7 @@ def render_mermaid(diagram: DiagramIR) -> str:
         lines.append(node_decl)
 
     # 5. Declaración de relaciones (edges)
+    emitted_pairs: set[tuple[str, str]] = set()
     sorted_relations = sorted(diagram.relations, key=lambda r: (r.source_id, r.target_id, r.id))
     for rel in sorted_relations:
         src = node_id_map.get(rel.source_id)
@@ -181,11 +182,18 @@ def render_mermaid(diagram: DiagramIR) -> str:
             else:
                 edge = f"    {src} --- {tgt}"
         lines.append(edge)
+        if not sanitized_rel_lbl:
+            emitted_pairs.add((rel.source_id, rel.target_id))
 
     # 6. Conexiones explícitas desde LineEntity si conectan puntos
     sorted_lines = sorted(diagram.lines, key=lambda l: (l.source_point_id or "", l.target_point_id or "", l.id))
     for line_ent in sorted_lines:
         if line_ent.source_point_id and line_ent.target_point_id:
+            if (
+                (line_ent.source_point_id, line_ent.target_point_id) in emitted_pairs
+                and not (line_ent.label or line_ent.raw_text)
+            ):
+                continue
             src = node_id_map.get(line_ent.source_point_id)
             tgt = node_id_map.get(line_ent.target_point_id)
             if src and tgt:

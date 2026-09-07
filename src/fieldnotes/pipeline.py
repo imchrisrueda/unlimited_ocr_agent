@@ -375,6 +375,12 @@ class UnlimitedOCRAgent:
         )
         return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
 
+    def process_cuaderno_campo(self, file_path: str | Path, output_dir: Optional[str | Path] = None, vision_model: Optional[str] = None, config: Optional[Any] = None, prompt: Optional[str] = None, max_tokens: int = 4096, **kwargs: Any):
+        """Procesa un cuaderno visual secuencial sin tablas de estadillo."""
+        from .profiles.notebook import CuadernoCampoProfile
+        profile = CuadernoCampoProfile(agent=self, output_base_dir=output_dir, vision_model=vision_model, config=config)
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+
     def process_diagram(
         self,
         image_path: str | Path,

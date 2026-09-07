@@ -3,15 +3,21 @@ import re
 import shutil
 import uuid
 from pathlib import Path
-from typing import Optional, Union, Any, Tuple, Dict, List
+from typing import Optional, Union, Any, Tuple, Dict, List, Literal
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..schemas.notebook import (
     NotebookConfig,
     NotebookPageDTO,
     NotebookPage,
     NotebookDocument,
+    NotebookSectionDTO,
+    NotebookNoteItemDTO,
+    GenericTableDTO,
     dto_to_notebook_page,
 )
+from ..schemas.diagram import DiagramDTO, dto_to_diagram_ir
+from ..schemas.dto import EstadilloHeaderDTO, VisualRegion1000DTO
 from ..schemas.review import review_issues_to_json, ReviewIssue
 from ..review.issues import (
     extract_review_issues_from_document,
@@ -25,6 +31,7 @@ from ..validation.notebook import validate_notebook_document
 from ..render.notebook import render_notebook_markdown
 from ..diagrams.render_svg import render_svg
 from ..diagrams.render_mermaid import render_mermaid
+from ..vlm.errors import StructuredOutputValidationError
 from .estadillo import safe_document_stem, write_atomic_file
 
 
@@ -75,6 +82,40 @@ NOTEBOOK_DEFAULT_EXTRA_BODY: dict[str, Any] = {
 }
 
 
+class CuadernoTextPageDTO(BaseModel):
+    """Contenido textual de página; excluye por contrato estadillo y geometría."""
+
+    schema_version: Literal[1] = 1
+    page_number: int = Field(..., ge=1)
+    header: Optional[EstadilloHeaderDTO] = None
+    sections: list[NotebookSectionDTO] = Field(default_factory=list)
+    notes: list[NotebookNoteItemDTO] = Field(default_factory=list)
+    tables: list[GenericTableDTO] = Field(default_factory=list)
+    additional_text: Optional[str] = None
+    warnings: list[str] = Field(default_factory=list)
+    regions: list[VisualRegion1000DTO] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class VisualItemDTO(BaseModel):
+    """Inventario ligero previo a la extracción geométrica."""
+
+    visual_type: Literal["field_sketch", "flowchart", "gps_sketch"]
+    description: str = Field(..., min_length=1)
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class VisualInventoryDTO(BaseModel):
+    items: list[VisualItemDTO] = Field(default_factory=list)
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+VISUAL_INVENTORY_PROMPT = """Inspecciona exclusivamente la evidencia visual de esta página.
+Enumera TODOS los croquis, figuras, gráficos o diagramas de flujo visibles, en orden de lectura.
+Clasifica cada elemento como field_sketch, flowchart o gps_sketch y descríbelo brevemente.
+No confundas una tabla con una figura. No inventes elementos. Si no hay ninguno, devuelve items=[]."""
+
+
 def build_notebook_page_prompt(
     page_number: int,
     config: Optional[NotebookConfig] = None,
@@ -101,6 +142,10 @@ def build_notebook_page_prompt(
 class NotebookProfile:
     """Perfil general de cuaderno para documentos mixtos, textuales, tabulares y con diagramas."""
 
+    document_filename = "notebook.md"
+    staging_prefix = "notebook"
+    page_schema = NotebookPageDTO
+
     def __init__(
         self,
         agent: Any,
@@ -117,6 +162,20 @@ class NotebookProfile:
         if vision_model:
             self.agent.vision_model = vision_model
         self.config = config or NotebookConfig()
+
+    def render_document(self, doc: NotebookDocument, assets_map: dict[str, str]) -> str:
+        return render_notebook_markdown(doc=doc, config=self.config, assets_map=assets_map)
+
+    def build_page_prompt(self, page_number: int, prompt: Optional[str]) -> str:
+        return build_notebook_page_prompt(page_number=page_number, config=self.config, user_prompt=prompt)
+
+    def normalize_page_dto(self, value: Any) -> NotebookPageDTO:
+        if isinstance(value, NotebookPageDTO):
+            return value
+        return NotebookPageDTO(**value.model_dump(exclude={"schema_version"}), estadillo_rows=[], diagrams=[])
+
+    def enrich_page_dto(self, art: Any, page_dto: NotebookPageDTO, max_tokens: int, call_kwargs: dict[str, Any]) -> NotebookPageDTO:
+        return page_dto
 
     def run(
         self,
@@ -155,7 +214,7 @@ class NotebookProfile:
             ) from exc
 
         # Directorio de staging aislado y confinado
-        staging_dir = (self.output_base_dir / f".staging_notebook_{stem}_{uuid.uuid4().hex}").resolve()
+        staging_dir = (self.output_base_dir / f".staging_{self.staging_prefix}_{stem}_{uuid.uuid4().hex}").resolve()
         staging_dir.relative_to(self.output_base_dir)
 
         backup_dir: Optional[Path] = None
@@ -208,11 +267,7 @@ class NotebookProfile:
             page_dtos: list[NotebookPageDTO] = []
 
             for art in artifacts:
-                page_prompt = build_notebook_page_prompt(
-                    page_number=art.page_number,
-                    config=self.config,
-                    user_prompt=prompt,
-                )
+                page_prompt = self.build_page_prompt(art.page_number, prompt)
 
                 call_kwargs = dict(kwargs)
                 call_kwargs.setdefault("reasoning_effort", "none")
@@ -228,18 +283,60 @@ class NotebookProfile:
                 call_kwargs["extra_body"] = effective_extra_body
 
                 # Inferencia estructurada compacta con NotebookPageDTO
-                page_dto: NotebookPageDTO = self.agent.ask_page_vision_structured(
-                    page_artifact=art,
-                    prompt=page_prompt,
-                    schema=NotebookPageDTO,
-                    max_tokens=max_tokens,
-                    **call_kwargs,
-                )
+                try:
+                    page_dto: NotebookPageDTO = self.agent.ask_page_vision_structured(
+                        page_artifact=art,
+                        prompt=page_prompt,
+                        schema=self.page_schema,
+                        max_tokens=max_tokens,
+                        **call_kwargs,
+                    )
+                except StructuredOutputValidationError:
+                    # Do not guess a conversion from pixel-like coordinates.
+                    # Retry once with an explicit schema correction instead.
+                    correction = (
+                        "\nCORRECCION OBLIGATORIA: las coordenadas visuales de diagrams "
+                        "deben ser numeros normalizados entre 0.0 y 1.0. No uses pixeles. "
+                        "Si no puedes expresarlas con evidencia, devuelve diagrams=[]."
+                    )
+                    try:
+                        page_dto = self.agent.ask_page_vision_structured(
+                            page_artifact=art,
+                            prompt=page_prompt + correction,
+                            schema=self.page_schema,
+                            max_tokens=max_tokens,
+                            **call_kwargs,
+                        )
+                    except StructuredOutputValidationError:
+                        # Preserve textual evidence when the model cannot emit valid
+                        # normalized geometry. Never derive geometry from pixel values.
+                        page_dto = self.agent.ask_page_vision_structured(
+                            page_artifact=art,
+                            prompt=(
+                                page_prompt
+                                + "\nNo extraigas diagramas en esta respuesta: devuelve diagrams=[] "
+                                "y conserva fielmente el resto de la página."
+                            ),
+                            schema=self.page_schema,
+                            max_tokens=max_tokens,
+                            **call_kwargs,
+                        )
+
+                page_dto = self.normalize_page_dto(page_dto)
+                page_dto = self.enrich_page_dto(art, page_dto, max_tokens, call_kwargs)
 
                 if isinstance(page_dto, NotebookPageDTO):
                     page_dtos.append(page_dto)
 
-                page_data = dto_to_notebook_page(page_dto, page_number=art.page_number)
+                try:
+                    page_data = dto_to_notebook_page(page_dto, page_number=art.page_number)
+                except Exception:
+                    if not page_dto.diagrams:
+                        raise
+                    # Preserve the rest of the page; invalid diagram geometry is not
+                    # safe to repair or infer from the model response.
+                    page_dto = page_dto.model_copy(update={"diagrams": []})
+                    page_data = dto_to_notebook_page(page_dto, page_number=art.page_number)
                 extracted_pages.append(page_data)
 
             # 3. Fusión pura de páginas y reconciliación de cabecera
@@ -274,11 +371,7 @@ class NotebookProfile:
                             assets_map[diag_key] = f"assets/{svg_filename}"
 
             # 6. Renderizado Markdown determinista (2 tablas obligatorias de AGENTS.md + secciones flexibles)
-            markdown_output = render_notebook_markdown(
-                doc=validated_doc,
-                config=self.config,
-                assets_map=assets_map,
-            )
+            markdown_output = self.render_document(validated_doc, assets_map)
 
             # 7. Generación de ReviewIssues y Crops visuales confinados
             review_issues = extract_review_issues_from_document(validated_doc)
@@ -301,7 +394,7 @@ class NotebookProfile:
             )
 
             # 8. Escribir archivos finales en staging
-            notebook_path = staging_dir / "notebook.md"
+            notebook_path = staging_dir / self.document_filename
             document_json_path = staging_dir / "document.json"
             issues_json_path = staging_review_dir / "issues.json"
 
@@ -379,3 +472,59 @@ class NotebookProfile:
                         original_error=exc,
                     ) from rollback_exc
             raise
+
+class CuadernoCampoProfile(NotebookProfile):
+    """Perfil visual secuencial sin el contrato ni las tablas de estadillo."""
+
+    document_filename = "cuaderno_campo.md"
+    staging_prefix = "cuaderno_campo"
+    page_schema = CuadernoTextPageDTO
+
+    def build_page_prompt(self, page_number: int, prompt: Optional[str]) -> str:
+        return super().build_page_prompt(page_number, prompt) + (
+            "\nMODO CUADERNO_CAMPO: conserva texto y tablas generales, pero devuelve "
+            "estadillo_rows=[] y diagrams=[]; las figuras se extraen en una fase VLM separada."
+        )
+
+    def enrich_page_dto(self, art: Any, page_dto: NotebookPageDTO, max_tokens: int, call_kwargs: dict[str, Any]) -> NotebookPageDTO:
+        from ..diagrams.extraction import get_diagram_prompt
+
+        inventory = self.agent.ask_page_vision_structured(
+            page_artifact=art, prompt=VISUAL_INVENTORY_PROMPT, schema=VisualInventoryDTO,
+            max_tokens=min(max_tokens, 1024), **call_kwargs,
+        )
+        diagrams: list[DiagramDTO] = []
+        for index, item in enumerate(inventory.items):
+            diagram_prompt = get_diagram_prompt(item.visual_type, art.page_number) + (
+                f"\nELEMENTO OBJETIVO {index + 1}: {item.description}. "
+                "Extrae solo este elemento y respeta coordenadas relativas entre 0.0 y 1.0."
+            )
+            diagram = self.agent.ask_page_vision_structured(
+                page_artifact=art, prompt=diagram_prompt, schema=DiagramDTO,
+                max_tokens=max_tokens, **call_kwargs,
+            )
+            canonical = dto_to_diagram_ir(diagram, source_page=art.page_number)
+            if item.visual_type == "flowchart":
+                has_named_nodes = any(point.label for point in canonical.points)
+                has_edges = bool(canonical.relations) or any(
+                    line.source_point_id and line.target_point_id for line in canonical.lines
+                )
+                if not (has_named_nodes and has_edges):
+                    retry_prompt = diagram_prompt + (
+                        "\nCORRECCION DE FLUJO OBLIGATORIA: representa cada caja como un point con "
+                        "label igual al texto visible; representa cada flecha como line con "
+                        "source_point_id y target_point_id válidos. No uses areas sin bbox/polygon. "
+                        "Usa coordenadas decimales 0.0..1.0 y no omitas las conexiones visibles."
+                    )
+                    retry = self.agent.ask_page_vision_structured(
+                        page_artifact=art, prompt=retry_prompt, schema=DiagramDTO,
+                        max_tokens=max_tokens, **call_kwargs,
+                    )
+                    dto_to_diagram_ir(retry, source_page=art.page_number)
+                    diagram = retry
+            diagrams.append(diagram)
+        return page_dto.model_copy(update={"estadillo_rows": [], "diagrams": diagrams})
+
+    def render_document(self, doc: NotebookDocument, assets_map: dict[str, str]) -> str:
+        from ..render.cuaderno_campo import render_cuaderno_campo_markdown
+        return render_cuaderno_campo_markdown(doc=doc, config=self.config, assets_map=assets_map)

@@ -262,6 +262,10 @@ def render_notebook_markdown(
                 page_diag_counts[p_num] = d_idx + 1
                 diag_key = f"p{p_num}_d{d_idx}"
                 asset_path = assets.get(diag_key)
+                lines.append("### Figura original")
+                lines.append(f"![Página {p_num}](pages/page_{p_num:03d}.png)")
+                lines.append("")
+                lines.append("### Reconstrucción VLM")
 
                 if diag.diagram_type == "flowchart":
                     # Flowcharts incrustan Mermaid directamente sin enlace a SVG

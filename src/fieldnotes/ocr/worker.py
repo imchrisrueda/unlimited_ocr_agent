@@ -316,6 +316,13 @@ def run_worker_process(request_path: str, response_path: str) -> int:
         validate_safe_output_path(output_dir, response_path)
         can_write_response = True
 
+        # Reject missing image input before loading the OCR model.
+        # This keeps the error inside the IPC protocol.
+        if mode == "image" and not os.path.isfile(image_paths[0]):
+            raise FileNotFoundError(
+                f"Image input file does not exist: {image_paths[0]}"
+            )
+
         from .unlimited import UnlimitedOCR
         from ..artifacts import PageArtifact
 

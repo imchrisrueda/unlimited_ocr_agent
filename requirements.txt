@@ -2,6 +2,7 @@ torch
 torchvision
 transformers>=4.40.0,<4.47.0
 openai
+pydantic>=2.12.0,<3.0.0
 Pillow
 pymupdf
 einops
@@ -10,3 +11,4 @@ easydict
 matplotlib
 psutil
 requests
+openpyxl>=3.1,<4

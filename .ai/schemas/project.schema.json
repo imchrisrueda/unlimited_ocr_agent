@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:jarvis:schema:project:1",
+  "title": "Jarvis project configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "project", "workflow", "agents", "executors", "planning", "knowledge", "formats"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "profile", "phase"],
+      "properties": {
+        "name": {"type": ["string", "null"]},
+        "profile": {"enum": [null, "code", "software", "scientific"]},
+        "phase": {
+          "enum": ["uninitialized", "discovery", "defined", "planned", "executing", "validating", "reviewing", "accepted", "paused", "archived"]
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "required": ["require_task", "require_review", "max_review_cycles"],
+      "properties": {
+        "require_task": {"type": "boolean"},
+        "require_review": {"type": "boolean"},
+        "max_review_cycles": {"type": "integer", "minimum": 1}
+      }
+    },
+    "agents": {
+      "type": "object",
+      "required": ["supervisor", "reviewer"]
+    },
+    "executors": {
+      "type": "object",
+      "required": ["primary", "local"]
+    },
+    "planning": {
+      "type": "object",
+      "required": ["current_milestone"]
+    },
+    "knowledge": {
+      "type": "object",
+      "required": ["structural_graph", "semantic_memory", "scientific_graph", "provenance"],
+      "properties": {
+        "structural_graph": {"$ref": "#/$defs/providerCapability"},
+        "semantic_memory": {"$ref": "#/$defs/providerCapability"},
+        "scientific_graph": {
+          "type": "object",
+          "required": ["enabled"],
+          "properties": {"enabled": {"type": "boolean"}}
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["enabled", "ro_crate", "prov_o", "run_crate"]
+        }
+      }
+    },
+    "formats": {
+      "type": "object",
+      "required": ["task", "science", "provenance"]
+    }
+  },
+  "$defs": {
+    "providerCapability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "provider"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "provider": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

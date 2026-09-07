@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "unlimited_ocr_agent",
+    "profile": "software",
+    "phase": "accepted"
+  },
+  "workflow": {
+    "require_task": true,
+    "require_review": true,
+    "max_review_cycles": 3
+  },
+  "agents": {
+    "supervisor": "codex",
+    "reviewer": "codex"
+  },
+  "executors": {
+    "primary": "gemini",
+    "local": null
+  },
+  "planning": {
+    "current_milestone": null
+  },
+  "knowledge": {
+    "structural_graph": {
+      "enabled": false,
+      "provider": "graphify"
+    },
+    "semantic_memory": {
+      "enabled": false,
+      "provider": "cognee"
+    },
+    "scientific_graph": {
+      "enabled": false
+    },
+    "provenance": {
+      "enabled": false,
+      "ro_crate": false,
+      "prov_o": false,
+      "run_crate": false
+    }
+  },
+  "formats": {
+    "task": 1,
+    "science": 1,
+    "provenance": 1
+  }
+}

@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "diagram_type": "flowchart",
+  "source_page": 2,
+  "title": "Protocolo de Muestreo Dendrométrico",
+  "description": "Flujograma de toma de decisiones para medición de árboles según altura y diámetro.",
+  "orientation": {
+    "direction": "none",
+    "degrees": null,
+    "raw_text": null,
+    "uncertain": false
+  },
+  "georeferenced": false,
+  "crs": null,
+  "geographic_coordinates": [],
+  "areas": [
+    {
+      "id": "node_inicio",
+      "bbox": {
+        "x_min": 0.35,
+        "y_min": 0.05,
+        "x_max": 0.65,
+        "y_max": 0.15
+      },
+      "polygon": null,
+      "area_type": "process_step",
+      "label": "Inicio Muestreo",
+      "raw_text": "INICIO",
+      "uncertain": false
+    },
+    {
+      "id": "node_decision",
+      "bbox": {
+        "x_min": 0.3,
+        "y_min": 0.3,
+        "x_max": 0.7,
+        "y_max": 0.45
+      },
+      "polygon": null,
+      "area_type": "process_step",
+      "label": "Altura > 1.30 m?",
+      "raw_text": "¿H > 1.30m?",
+      "uncertain": false
+    },
+    {
+      "id": "node_medir_dap",
+      "bbox": {
+        "x_min": 0.1,
+        "y_min": 0.6,
+        "x_max": 0.4,
+        "y_max": 0.75
+      },
+      "polygon": null,
+      "area_type": "process_step",
+      "label": "Medir DAP y BBCH",
+      "raw_text": "Medir DAP",
+      "uncertain": false
+    },
+    {
+      "id": "node_medir_altura",
+      "bbox": {
+        "x_min": 0.6,
+        "y_min": 0.6,
+        "x_max": 0.9,
+        "y_max": 0.75
+      },
+      "polygon": null,
+      "area_type": "process_step",
+      "label": "Medir Altura Total",
+      "raw_text": "Medir H",
+      "uncertain": false
+    },
+    {
+      "id": "node_fin",
+      "bbox": {
+        "x_min": 0.35,
+        "y_min": 0.85,
+        "x_max": 0.65,
+        "y_max": 0.95
+      },
+      "polygon": null,
+      "area_type": "process_step",
+      "label": "Fin Registro",
+      "raw_text": "FIN",
+      "uncertain": false
+    }
+  ],
+  "points": [
+    {
+      "id": "pt_start",
+      "coordinate": {
+        "x": 0.5,
+        "y": 0.1
+      },
+      "label": null,
+      "point_type": "start",
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "pt_end",
+      "coordinate": {
+        "x": 0.5,
+        "y": 0.9
+      },
+      "label": null,
+      "point_type": "end",
+      "raw_text": null,
+      "uncertain": false
+    }
+  ],
+  "lines": [
+    {
+      "id": "edge_1",
+      "points": [
+        {
+          "x": 0.5,
+          "y": 0.15
+        },
+        {
+          "x": 0.5,
+          "y": 0.3
+        }
+      ],
+      "line_type": "flow_arrow",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": null,
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "edge_yes",
+      "points": [
+        {
+          "x": 0.35,
+          "y": 0.45
+        },
+        {
+          "x": 0.25,
+          "y": 0.6
+        }
+      ],
+      "line_type": "flow_arrow",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": "Sí",
+      "raw_text": "Si",
+      "uncertain": false
+    },
+    {
+      "id": "edge_no",
+      "points": [
+        {
+          "x": 0.65,
+          "y": 0.45
+        },
+        {
+          "x": 0.75,
+          "y": 0.6
+        }
+      ],
+      "line_type": "flow_arrow",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": "No",
+      "raw_text": "No",
+      "uncertain": false
+    },
+    {
+      "id": "edge_join1",
+      "points": [
+        {
+          "x": 0.25,
+          "y": 0.75
+        },
+        {
+          "x": 0.45,
+          "y": 0.85
+        }
+      ],
+      "line_type": "flow_arrow",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": null,
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "edge_join2",
+      "points": [
+        {
+          "x": 0.75,
+          "y": 0.75
+        },
+        {
+          "x": 0.55,
+          "y": 0.85
+        }
+      ],
+      "line_type": "flow_arrow",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": null,
+      "raw_text": null,
+      "uncertain": false
+    }
+  ],
+  "labels": [
+    {
+      "id": "lbl_proto",
+      "text": "Protocolo V2",
+      "position": {
+        "x": 0.85,
+        "y": 0.05
+      },
+      "attached_to_id": null,
+      "raw_text": "V2",
+      "uncertain": false
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel_flow_1",
+      "source_id": "node_inicio",
+      "target_id": "node_decision",
+      "relation_type": "flows_to",
+      "directed": true,
+      "label": null,
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "rel_flow_yes",
+      "source_id": "node_decision",
+      "target_id": "node_medir_dap",
+      "relation_type": "flows_to",
+      "directed": true,
+      "label": "Sí",
+      "raw_text": "Si",
+      "uncertain": false
+    },
+    {
+      "id": "rel_flow_no",
+      "source_id": "node_decision",
+      "target_id": "node_medir_altura",
+      "relation_type": "flows_to",
+      "directed": true,
+      "label": "No",
+      "raw_text": "No",
+      "uncertain": false
+    }
+  ],
+  "raw_text": "Protocolo de toma de datos dendrométricos.",
+  "warnings": [],
+  "uncertain": false
+}

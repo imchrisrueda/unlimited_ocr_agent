@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "name": "code",
+  "parent": null,
+  "capabilities": [
+    "tasks",
+    "reviews",
+    "checks",
+    "basic_documentation"
+  ],
+  "directories": [
+    ".ai/tasks",
+    ".ai/reviews"
+  ],
+  "files": [],
+  "config_patch": {
+    "project": {
+      "profile": "code",
+      "phase": "discovery"
+    }
+  }
+}

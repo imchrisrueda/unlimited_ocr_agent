@@ -2,3 +2,15 @@
 __pycache__/
 output_ocr/
 ocr_run.log
+/jarvis/
+.pytest_cache/
+*.py[cod]
+build/
+dist/
+*.egg-info/
+resultados_*/
+validation_*/
+*.out.log
+*.err.log
+/diagrama.pdf
+/notas_campo.pdf

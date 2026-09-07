@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "dataset_id": "fieldnotes-benchmark-fixtures-v1",
+  "dataset_version": "1.0.0",
+  "description": "Dataset fixture anonimizado determinista para pruebas del benchmark de estadillos",
+  "created_at": "2026-08-27T00:00:00Z",
+  "pipelines": [
+    {
+      "pipeline_id": "ocr_only",
+      "pipeline_name": "Unlimited-OCR Directo",
+      "version": "1.0.0",
+      "description": "Extracción directa de tablas mediante modelo multimodal baidu/Unlimited-OCR en worker aislado",
+      "ocr_engine": "baidu/Unlimited-OCR",
+      "vlm_model": null,
+      "profile": "estadillo",
+      "parameters": {
+        "ocr_mode": "worker"
+      }
+    },
+    {
+      "pipeline_id": "ocr_plus_vlm",
+      "pipeline_name": "Unlimited-OCR + Qwen 3.5 9B (Visión)",
+      "version": "1.0.0",
+      "description": "Pipeline multimodal con OCR previo como soporte y Qwen 3.5 9B analizando imagen y estructura con Pydantic",
+      "ocr_engine": "baidu/Unlimited-OCR",
+      "vlm_model": "Qwen 3.5 9B",
+      "profile": "estadillo",
+      "parameters": {
+        "ocr_mode": "worker",
+        "reasoning_effort": "none",
+        "schema": "EstadilloPageDTO"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "case_01_easy",
+      "category": "easy",
+      "evaluate_structured": true,
+      "document_path": null,
+      "ground_truth_path": "ground_truth/case_01_easy_gt.json",
+      "predictions": {
+        "ocr_only": "predictions/case_01_ocr_only.json",
+        "ocr_plus_vlm": "predictions/case_01_ocr_plus_vlm.json"
+      },
+      "description": "Estadillo limpio con 5 registros y texto claro",
+      "tags": [
+        "facil",
+        "tabla_estandar"
+      ],
+      "metadata": {}
+    },
+    {
+      "case_id": "case_02_hard",
+      "category": "hard",
+      "evaluate_structured": true,
+      "document_path": null,
+      "ground_truth_path": "ground_truth/case_02_hard_gt.json",
+      "predictions": {
+        "ocr_only": "predictions/case_02_ocr_only.json",
+        "ocr_plus_vlm": "predictions/case_02_hard_ocr_plus_vlm.json"
+      },
+      "description": "Estadillo complejo con columnas divididas y decimales ambiguos",
+      "tags": [
+        "dificil",
+        "columnas_divididas"
+      ],
+      "metadata": {}
+    },
+    {
+      "case_id": "case_03_handwritten",
+      "category": "handwritten",
+      "evaluate_structured": true,
+      "document_path": null,
+      "ground_truth_path": "ground_truth/case_03_handwritten_gt.json",
+      "predictions": {
+        "ocr_only": "predictions/case_03_ocr_only.json",
+        "ocr_plus_vlm": "predictions/case_03_ocr_plus_vlm.json"
+      },
+      "description": "Estadillo manuscrito con codigos BBCH cursivos",
+      "tags": [
+        "manuscrito",
+        "bbch_cursivo"
+      ],
+      "metadata": {}
+    },
+    {
+      "case_id": "case_04_mixed",
+      "category": "mixed",
+      "evaluate_structured": true,
+      "document_path": null,
+      "ground_truth_path": "ground_truth/case_04_mixed_gt.json",
+      "predictions": {
+        "ocr_only": "predictions/case_04_ocr_only.json",
+        "ocr_plus_vlm": "predictions/case_04_ocr_plus_vlm.json"
+      },
+      "description": "Pagina mixta con cabecera de metadatos, tabla y notas",
+      "tags": [
+        "mixto",
+        "cabecera",
+        "tabla"
+      ],
+      "metadata": {}
+    },
+    {
+      "case_id": "case_05_sketch",
+      "category": "sketch",
+      "evaluate_structured": false,
+      "document_path": null,
+      "ground_truth_path": "ground_truth/case_05_sketch_gt.json",
+      "predictions": {},
+      "description": "Pagina con croquis catalogada para PR 9/10 sin evaluacion cuantitativa tabular en PR 8",
+      "tags": [
+        "croquis",
+        "esquema"
+      ],
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "anonymized": true,
+    "synthetic": true,
+    "purpose": "infra_ci_cd_verification_only_not_scientific_evidence",
+    "contains_sensitive_data": false
+  }
+}

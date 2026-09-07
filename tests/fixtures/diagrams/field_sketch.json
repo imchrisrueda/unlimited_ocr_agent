@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "diagram_type": "field_sketch",
+  "source_page": 1,
+  "title": "Croquis de Parcela Experimental A-12",
+  "description": "Croquis esquemático de la subdivisión de la parcela A-12 mostrando dos bancales, puntos de muestreo y arroyo limítrofe.",
+  "orientation": {
+    "direction": "north_up",
+    "degrees": null,
+    "raw_text": "Norte hacia arriba (flecha N)",
+    "uncertain": false
+  },
+  "georeferenced": false,
+  "crs": null,
+  "geographic_coordinates": [],
+  "areas": [
+    {
+      "id": "area_bancal_1",
+      "bbox": {
+        "x_min": 0.1,
+        "y_min": 0.2,
+        "x_max": 0.45,
+        "y_max": 0.8
+      },
+      "polygon": null,
+      "area_type": "plot",
+      "label": "Bancal 1 - Quercus",
+      "raw_text": "Bancal 1",
+      "uncertain": false
+    },
+    {
+      "id": "area_bancal_2",
+      "bbox": {
+        "x_min": 0.55,
+        "y_min": 0.2,
+        "x_max": 0.9,
+        "y_max": 0.8
+      },
+      "polygon": null,
+      "area_type": "plot",
+      "label": "Bancal 2 - Pinus",
+      "raw_text": "Bancal 2",
+      "uncertain": false
+    }
+  ],
+  "points": [
+    {
+      "id": "p_m1",
+      "coordinate": {
+        "x": 0.25,
+        "y": 0.35
+      },
+      "label": "M1",
+      "point_type": "sample_point",
+      "raw_text": "M1",
+      "uncertain": false
+    },
+    {
+      "id": "p_m2",
+      "coordinate": {
+        "x": 0.25,
+        "y": 0.65
+      },
+      "label": "M2",
+      "point_type": "sample_point",
+      "raw_text": "M2",
+      "uncertain": false
+    },
+    {
+      "id": "p_m3",
+      "coordinate": {
+        "x": 0.72,
+        "y": 0.5
+      },
+      "label": "M3",
+      "point_type": "sample_point",
+      "raw_text": "M3",
+      "uncertain": false
+    }
+  ],
+  "lines": [
+    {
+      "id": "line_arroyo",
+      "points": [
+        {
+          "x": 0.05,
+          "y": 0.1
+        },
+        {
+          "x": 0.08,
+          "y": 0.5
+        },
+        {
+          "x": 0.05,
+          "y": 0.9
+        }
+      ],
+      "line_type": "stream",
+      "directed": true,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": "Arroyo Norte",
+      "raw_text": "Arroyo",
+      "uncertain": false
+    },
+    {
+      "id": "line_camino",
+      "points": [
+        {
+          "x": 0.48,
+          "y": 0.15
+        },
+        {
+          "x": 0.52,
+          "y": 0.85
+        }
+      ],
+      "line_type": "path",
+      "directed": false,
+      "source_point_id": null,
+      "target_point_id": null,
+      "label": "Senda central",
+      "raw_text": "Camino",
+      "uncertain": false
+    }
+  ],
+  "labels": [
+    {
+      "id": "lbl_acc",
+      "text": "Acceso principal por senda sur",
+      "position": {
+        "x": 0.5,
+        "y": 0.92
+      },
+      "attached_to_id": "line_camino",
+      "raw_text": "Acceso",
+      "uncertain": false
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel_1",
+      "source_id": "area_bancal_1",
+      "target_id": "area_bancal_2",
+      "relation_type": "adjacent_to",
+      "directed": false,
+      "label": "Separados por senda",
+      "raw_text": null,
+      "uncertain": false
+    }
+  ],
+  "raw_text": "Croquis de campo Parcela A-12. Dos bancales principales con 3 puntos de muestreo.",
+  "warnings": [],
+  "uncertain": false
+}

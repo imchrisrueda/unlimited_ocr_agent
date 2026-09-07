@@ -1,0 +1,222 @@
+{
+  "schema_version": 1,
+  "diagram_type": "gps_sketch",
+  "source_page": 3,
+  "title": "Esquema Georreferenciado Vértices Parcela Montejo",
+  "description": "Esquema con 3 vértices perimetrales y coordenadas GPS anotadas explícitamente en el margen.",
+  "orientation": {
+    "direction": "north_up",
+    "degrees": null,
+    "raw_text": "Norte",
+    "uncertain": false
+  },
+  "georeferenced": true,
+  "crs": "EPSG:4326",
+  "geographic_coordinates": [
+    {
+      "id": "gps_v1",
+      "latitude": 41.11245,
+      "longitude": -3.52891,
+      "elevation_m": 1240.5,
+      "raw_text": "V1: 41.11245N, 3.52891W, 1240m",
+      "source_page": 3,
+      "associated_point_id": "pt_v1",
+      "uncertain": false,
+      "alternatives": [],
+      "description": "Vértice Noroeste"
+    },
+    {
+      "id": "gps_v2",
+      "latitude": 41.1118,
+      "longitude": -3.5254,
+      "elevation_m": 1235.0,
+      "raw_text": "V2: 41.11180N, 3.52540W, 1235m",
+      "source_page": 3,
+      "associated_point_id": "pt_v2",
+      "uncertain": false,
+      "alternatives": [],
+      "description": "Vértice Noreste"
+    },
+    {
+      "id": "gps_v3",
+      "latitude": 41.1092,
+      "longitude": -3.5271,
+      "elevation_m": 1210.0,
+      "raw_text": "V3: 41.10920N, 3.52710W, 1210m",
+      "source_page": 3,
+      "associated_point_id": "pt_v3",
+      "uncertain": false,
+      "alternatives": [],
+      "description": "Vértice Sur"
+    }
+  ],
+  "areas": [
+    {
+      "id": "area_montejo_core",
+      "bbox": null,
+      "polygon": [
+        {
+          "x": 0.2,
+          "y": 0.2
+        },
+        {
+          "x": 0.8,
+          "y": 0.25
+        },
+        {
+          "x": 0.5,
+          "y": 0.85
+        }
+      ],
+      "area_type": "plot",
+      "label": "Parcela Triangular",
+      "raw_text": "Parcela Core",
+      "uncertain": false
+    }
+  ],
+  "points": [
+    {
+      "id": "pt_v1",
+      "coordinate": {
+        "x": 0.2,
+        "y": 0.2
+      },
+      "label": "V1",
+      "point_type": "vertex",
+      "raw_text": "V1",
+      "uncertain": false
+    },
+    {
+      "id": "pt_v2",
+      "coordinate": {
+        "x": 0.8,
+        "y": 0.25
+      },
+      "label": "V2",
+      "point_type": "vertex",
+      "raw_text": "V2",
+      "uncertain": false
+    },
+    {
+      "id": "pt_v3",
+      "coordinate": {
+        "x": 0.5,
+        "y": 0.85
+      },
+      "label": "V3",
+      "point_type": "vertex",
+      "raw_text": "V3",
+      "uncertain": false
+    }
+  ],
+  "lines": [
+    {
+      "id": "line_p1_p2",
+      "points": [
+        {
+          "x": 0.2,
+          "y": 0.2
+        },
+        {
+          "x": 0.8,
+          "y": 0.25
+        }
+      ],
+      "line_type": "boundary",
+      "directed": false,
+      "source_point_id": "pt_v1",
+      "target_point_id": "pt_v2",
+      "label": "Linde Norte",
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "line_p2_p3",
+      "points": [
+        {
+          "x": 0.8,
+          "y": 0.25
+        },
+        {
+          "x": 0.5,
+          "y": 0.85
+        }
+      ],
+      "line_type": "boundary",
+      "directed": false,
+      "source_point_id": "pt_v2",
+      "target_point_id": "pt_v3",
+      "label": "Linde Este",
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "line_p3_p1",
+      "points": [
+        {
+          "x": 0.5,
+          "y": 0.85
+        },
+        {
+          "x": 0.2,
+          "y": 0.2
+        }
+      ],
+      "line_type": "boundary",
+      "directed": false,
+      "source_point_id": "pt_v3",
+      "target_point_id": "pt_v1",
+      "label": "Linde Oeste",
+      "raw_text": null,
+      "uncertain": false
+    }
+  ],
+  "labels": [
+    {
+      "id": "lbl_coords_box",
+      "text": "Datum WGS84 - Coordenadas GPS en grados decimales",
+      "position": {
+        "x": 0.5,
+        "y": 0.95
+      },
+      "attached_to_id": null,
+      "raw_text": "WGS84",
+      "uncertain": false
+    }
+  ],
+  "relations": [
+    {
+      "id": "rel_v1_v2",
+      "source_id": "pt_v1",
+      "target_id": "pt_v2",
+      "relation_type": "connected_to",
+      "directed": false,
+      "label": "Linde Norte",
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "rel_v2_v3",
+      "source_id": "pt_v2",
+      "target_id": "pt_v3",
+      "relation_type": "connected_to",
+      "directed": false,
+      "label": "Linde Este",
+      "raw_text": null,
+      "uncertain": false
+    },
+    {
+      "id": "rel_v3_v1",
+      "source_id": "pt_v3",
+      "target_id": "pt_v1",
+      "relation_type": "connected_to",
+      "directed": false,
+      "label": "Linde Oeste",
+      "raw_text": null,
+      "uncertain": false
+    }
+  ],
+  "raw_text": "Esquema perimetral Montejo con coordenadas GPS explícitas en WGS84.",
+  "warnings": [],
+  "uncertain": false
+}

@@ -1,122 +1,278 @@
-# Agente de OCR con Unlimited-OCR y LM Studio
+# Unlimited OCR Agent
 
-Herramienta local para digitalizar documentos PDF e imágenes mediante el modelo multimodal `baidu/Unlimited-OCR`. Puede exportar el resultado a Markdown o PDF y, opcionalmente, enviarlo a LM Studio para análisis adicional.
+Digitalización local y trazable de PDF e imágenes con Unlimited-OCR y un modelo Qwen servido por LM Studio. El perfil `estadillo` convierte cada jornada en una entrega revisable equivalente a [`gt/`](gt/):
 
-Unlimited-OCR debe entenderse como un modelo de OCR y parsing visual de documentos. Su objetivo es reconocer texto, tablas, fórmulas y estructura en imágenes, incluso a lo largo de varias páginas. No es un modelo de resumen ni un compresor de contexto para sustituir a un LLM.
+```text
+output_ocr/
+└── 2026-05-06/
+    ├── notas.md
+    ├── datos.csv
+    ├── document.json
+    ├── pages/
+    ├── raw/
+    ├── assets/
+    └── review/
+```
+
+`notas.md` conserva los metadatos y enlaza explícitamente `datos.csv`. El CSV contiene una fila por registro. La convención y la [guía de análisis con Qwen](docs/QWEN_ANALYSIS_GUIDE.md) permiten relacionar ambos artefactos y comparar varias fechas sin inventar tendencias, causalidad ni datos ausentes.
+
+## Inicio rápido
+
+Para instalación, validación, ejecución, revisión y supervisión de recursos, consulta el [manual paso a paso](docs/BOOTSTRAP.md).
 
 ## Requisitos
 
-- Python 3.10 a 3.12
-- `uv`
-- LM Studio, únicamente para consultas y procesamiento posterior al OCR
-- GPU NVIDIA compatible, si se desea aceleración CUDA
+- Windows o Linux con Python 3.11 y [uv](https://docs.astral.sh/uv/).
+- Git.
+- GPU NVIDIA compatible con PyTorch/CUDA para Unlimited-OCR.
+- LM Studio con su servidor OpenAI-compatible en `http://localhost:1234`.
+- Un Qwen multimodal cargado en LM Studio. El modelo se selecciona por identificador; no está codificado de forma fija.
 
-## Instalación
+## Instalación reproducible
 
 ```powershell
-uv python install 3.11
-uv venv .venv --python 3.11
+git clone https://github.com/imchrisrueda/unlimited_ocr_agent.git
+cd unlimited_ocr_agent
+git switch codex/pr1-safe-refactor
+uv venv --python 3.11
 .\.venv\Scripts\python.exe setup_env.py
-uv pip install -r requirements.txt -p .venv
 ```
 
-El configurador detecta automáticamente una GPU NVIDIA. Con GPU instala PyTorch con CUDA 12.4; en CPU instala la variante estándar.
-
-En Windows, `setup_env.py` debe ejecutarse con la ruta de Python del entorno virtual para evitar depender de los alias de Microsoft Store.
-
-## Uso
-
-Convertir un documento a Markdown usando únicamente el OCR:
+En Linux, sustituye el intérprete por `.venv/bin/python`. Comprueba la instalación sin GPU ni servidor:
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py documento.pdf --raw --export-md resultado.md
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+.\.venv\Scripts\python.exe scripts\projectctl.py validate
 ```
 
-La opción `--raw` devuelve directamente el Markdown generado por Unlimited-OCR, sin consultar LM Studio. Para una imagen se utiliza `infer` con `save_results=True`. Para un PDF, el agente rasteriza las páginas a 300 DPI y utiliza `infer_multi`, que es el flujo recomendado por el proyecto oficial para parsing multipágina. Se activan los parámetros de prevención de repetición recomendados por el modelo (`no_repeat_ngram_size=35` y `ngram_window=1024` en documentos multipágina).
-
-Ejemplo con el documento incluido en este repositorio:
+Configura LM Studio:
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py 26-05-06.pdf --raw --export-md 26-05-06_raw.md
+$env:LM_STUDIO_URL = "http://localhost:1234"
+$env:LM_STUDIO_API_KEY = "lm-studio"
+$env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
+$env:LM_STUDIO_TEXT_MODEL = "identificador-del-qwen"
 ```
-
-Procesar el texto con LM Studio:
+`identificador-del-qwen-multimodal` e `identificador-del-qwen` son marcadores: no los copies literalmente. El modelo de visión debe estar cargado en LM Studio y aceptar imágenes. Por ejemplo, si LM Studio anuncia `qwen/qwen3.5-9b` como modelo multimodal, configúralo así:
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py documento.pdf "Resume las obligaciones y las fechas importantes" --export-md resumen.md
+$env:LM_STUDIO_VISION_MODEL = "qwen/qwen3.5-9b"
+$env:LM_STUDIO_TEXT_MODEL = "qwen/qwen3.8-27b"
 ```
 
-También puedes mantener la instrucción fuera del código y cambiarla entre ejecuciones:
+Los identificadores disponibles dependen de los modelos cargados localmente. Si el configurado no aparece, la aplicación mostrará los identificadores anunciados. Carga un modelo Qwen-VL/multimodal y usa su identificador exacto.
+
+Puedes pasar el modelo directamente con `--vision-model`. Usa exactamente el identificador que expone LM Studio.
+
+## Modos de uso
+
+### Estadillo — entrega recomendada
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py documento.pdf --instruction-file AGENTS.md --export-md resultado.md
+.\.venv\Scripts\python.exe agent.py 26-05-06.pdf --profile estadillo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
 ```
 
-Si se proporcionan una instrucción posicional y `--instruction-file`, prevalece el contenido del archivo. El agente no carga `AGENTS.md` automáticamente: la instrucción se elige de forma explícita para que el mismo OCR pueda reutilizarse con tareas diferentes.
+Genera la entrega canónica `<fecha>/notas.md` y `<fecha>/datos.csv`, y el libro de revisión `<fecha>/review/datos.xlsx`. Si la fecha no está respaldada de forma inequívoca, conserva un directorio seguro basado en el archivo y registra `SESSION_DATE_UNRESOLVED`.
 
-Para usar LM Studio, inicia su servidor local en `http://localhost:1234`. La URL y la clave pueden configurarse mediante `LM_STUDIO_URL` y `LM_STUDIO_API_KEY`. LM Studio se utiliza después del OCR para resumir, consultar o transformar el texto reconocido; no participa en la extracción raw.
+Para revisar en Excel:
 
-También se puede exportar a PDF con `--export-pdf` o generar ambas salidas en una sola ejecución.
-
-## Estructura
-
-- `agent.py`: procesamiento OCR, integración con LM Studio y exportación.
-- `setup_env.py`: detección de hardware e instalación de PyTorch.
-- `requirements.txt`: dependencias Python.
-- `26-05-06.pdf`: documento de prueba incluido en el repositorio.
-
-## Uso adecuado y límites
-
-- Para imágenes individuales: `infer` con `<image>document parsing.` y `save_results=True`.
-- Para PDF o documentos multipágina: convertir las páginas a imágenes y usar `infer_multi` con `<image>Multi page parsing.`.
-- El resultado OCR puede contener HTML de tablas, coordenadas, etiquetas de detección o errores de reconocimiento. Debe validarse antes de usarlo como dato estructurado.
-- La conversión a PDF de este proyecto es una exportación visual del texto Markdown; no reconstruye automáticamente un PDF editable con el diseño original.
-
-La implementación se basa en la [documentación oficial de Unlimited-OCR](https://github.com/baidu/Unlimited-OCR), que distingue explícitamente entre `infer` para una imagen y `infer_multi` para varias páginas.
-## Archivos intermedios
-
-Durante la inferencia se generan imágenes de las páginas, resultados raw y, en ocasiones, imágenes con cajas de detección dentro de un subdirectorio temporal de `output_ocr`. Son útiles para depurar el OCR, revisar el reconocimiento visual o conservar evidencias de una ejecución, pero no son necesarios después de exportar el Markdown o el PDF.
-
-Por defecto, el agente elimina ese subdirectorio al finalizar. Para conservarlo durante una ejecución concreta:
+1. Abre `review/datos.xlsx` y corrige los registros.
+2. Guarda el libro con el mismo nombre.
+3. Publica los cambios en el CSV canónico:
 
 ```powershell
-.\.venv\Scripts\python.exe agent.py documento.pdf --raw --export-md resultado.md --keep-intermediate
+.\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\2026-05-06
 ```
 
-Las rutas indicadas mediante `--export-md` y `--export-pdf` se conservan; solo se limpia el subdirectorio temporal de esa ejecución.
-## Configuración de LM Studio
-
-El agente consulta `/v1/models` y selecciona automáticamente el primer modelo de texto disponible. También puedes fijar el modelo explícitamente:
+El comando valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y escribe `datos.csv` en UTF-8, con comas como delimitador y punto decimal. Si encuentra un valor inválido, no publica nada.
+### OCR directo
 
 ```powershell
-$env:LM_STUDIO_MODEL="qwen/qwen3.6-27b"
-python agent.py documento.pdf "¿Cuántas filas existen en el experimento?" --export-md respuesta.md
+.\.venv\Scripts\python.exe agent.py documento.pdf --raw --output output_ocr
 ```
 
-O mediante la opción equivalente:
+Extrae texto sin consultar a Qwen.
+
+### Consulta general
 
 ```powershell
-python agent.py documento.pdf "¿Cuántas filas existen en el experimento?" --lm-model qwen/qwen3.6-27b --export-md respuesta.md
+.\.venv\Scripts\python.exe agent.py documento.pdf "Extrae los hechos presentes" --text-model "identificador-del-qwen"
 ```
 
-No se debe usar `local-model` salvo que ese sea realmente el identificador anunciado por `/v1/models`.
+Es una respuesta interpretativa; no la uses como entrega canónica ni para completar datos ausentes. Para digitalización trazable usa --profile estadillo.
 
-### Razonamiento y documentos extensos
-
-Puedes activar razonamiento cuando la tarea requiera comparar, inferir o elaborar un resumen analítico:
+### Visión general
 
 ```powershell
-python agent.py documento.pdf "Realiza un resumen analítico con conclusiones y evidencias" --reasoning-effort medium --max-tokens 4096 --export-md resumen.md
+.\.venv\Scripts\python.exe agent.py documento.pdf "Describe la estructura" --ask-vision --vision-model "identificador-del-qwen-multimodal"
 ```
 
-Los niveles disponibles son `none`, `low`, `medium` y `high`. `--max-tokens` limita la respuesta generada; no aumenta la ventana de contexto del modelo.
-
-Para documentos que no caben cómodamente en una sola petición, activa el procesamiento por fragmentos:
+### Cuaderno heterogéneo
 
 ```powershell
-python agent.py documento.pdf "Realiza un resumen analítico global" --reasoning-effort medium --max-tokens 2048 --chunk-size 12000 --chunk-overlap 500 --export-md resumen.md
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile notebook --vision-model "identificador-del-qwen-multimodal" --output output_ocr
 ```
 
-El agente analiza cada fragmento y realiza una última llamada de síntesis. `--chunk-size` y `--chunk-overlap` se expresan en caracteres. Este modo aumenta el tiempo y el número de llamadas, pero evita depender de una única ventana de contexto para documentos extensos.
+El perfil `notebook` mantiene su salida `notebook.md` para documentos mixtos; no sustituye el contrato específico de estadillo.
 
-Para consultas posteriores a OCR, el agente envía `reasoning_effort="none"` por defecto. Esto evita que modelos como Gemma consuman todo el límite de salida en `reasoning_content` y devuelvan `content` vacío. Si LM Studio devuelve una respuesta sin contenido, el terminal muestra una ayuda indicando esta causa y las alternativas: usar un modelo no razonador o aumentar el límite de tokens.
+Para cuadernos visuales usa `--profile cuaderno_campo`: genera `cuaderno_campo.md` en orden de página, sin tablas de estadillo. Cada figura se reconstruye con el VLM; los flujos se incluyen como Mermaid y después se inserta la imagen original.
+
+```powershell
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile cuaderno_campo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
+```
+
+La extracción textual y la extracción de figuras se ejecutan en pasadas VLM separadas. Si una referencia visual es inválida, se descarta y queda advertida; nunca se crea una entidad para repararla.
+
+## Flujo de decisión
+
+```mermaid
+flowchart TD
+    A[PDF o imagen] --> B{Uso}
+    B -->|Solo transcripción| C[--raw]
+    B -->|Pregunta textual| D[Perfil default]
+    B -->|Análisis visual libre| E[--ask-vision]
+    B -->|Estadillo de campo| F[--profile estadillo]
+    B -->|Cuaderno mixto| G[--profile notebook]
+    B -->|Cuaderno visual| Q[--profile cuaderno_campo]
+    C --> H[OCR]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+    Q --> H
+    H --> I{¿Qwen necesario?}
+    I -->|No, raw| J[Texto OCR]
+    I -->|Sí| K[LM Studio / Qwen]
+    K --> L{Perfil}
+    L -->|Estadillo| M[fecha/notas.md + datos.csv]
+    L -->|Notebook| N[notebook.md + evidencias]
+    L -->|Cuaderno campo| R[cuaderno_campo.md + original + Mermaid o SVG]
+    L -->|Default| O[Respuesta o exportación]
+    M --> P[Revisión de issues y evidencia]
+```
+
+El modo OCR `worker` es el predeterminado y aísla Unlimited-OCR para liberar VRAM antes de consultar Qwen. `--ocr-mode in_process` reduce el coste de arranque, pero puede aumentar el riesgo de falta de memoria.
+
+## Contrato del estadillo
+
+La fuente normativa es [`AGENTS.md`](AGENTS.md), y [`gt/`](gt/) es la referencia humana de forma, no una plantilla de valores.
+
+- No se inventan campos.
+- La carpeta usa una fecha ISO demostrada por el documento.
+- `notas.md` contiene YAML con objetivo, fecha, asistentes, equipamiento, situación atmosférica, catálogo de especies y enlace relativo al CSV.
+- `datos.csv` usa exactamente `id,col,fil,especie,altura_cm,foto,bbch,observaciones`.
+- Solo se normalizan las variantes explícitas `Ap→P`, `Ah→H`, `Ar→R` y `Mz→M`.
+- `document.json`, `raw/`, `pages/` y `review/` mantienen la trazabilidad.
+- Las comparaciones entre fechas deben distinguir hechos observados de inferencias y señalar discontinuidades o ambigüedades.
+
+## Validación y diagnóstico
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+.\.venv\Scripts\python.exe -m compileall -q agent.py src tests
+.\.venv\Scripts\python.exe scripts\projectctl.py validate
+git diff --check
+```
+
+### Pruebas de integración real (optativas)
+
+Las pruebas anteriores son locales y no necesitan GPU ni LM Studio. Estas pruebas usan `26-05-06.pdf` y pueden cargar Unlimited-OCR o consultar LM Studio, por lo que se desactivan por defecto.
+
+Antes de ejecutarlas, comprueba que la GPU y el modelo de visión estén disponibles:
+
+```powershell
+nvidia-smi
+$env:LM_STUDIO_URL = "http://localhost:1234"
+$env:LM_STUDIO_API_KEY = "lm-studio"
+$env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
+```
+
+Ejecuta cada prueba de forma independiente:
+
+```powershell
+# OCR directo: texto, páginas y raw/document.md
+$env:RUN_OCR_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_ocr.TestRealOCRIntegration
+
+# OCR en worker: aislamiento de Torch, seis páginas y liberación de VRAM
+$env:RUN_OCR_WORKER_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_ocr.TestRealOCRWorkerIntegration
+
+# Estadillo: estructura canónica, CSV y al menos 50 registros
+$env:RUN_ESTADILLO_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_profile_estadillo.TestRealEstadilloProfileIntegration
+
+# Revisión de estadillo: issues.json, crops válidos y sin PNG huérfanos
+.\.venv\Scripts\python.exe -m unittest tests.test_review.TestRealEstadilloReviewIntegration
+
+# Notebook: estructura y artefactos de notebook.md
+$env:RUN_NOTEBOOK_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_profile_notebook.TestRealNotebookProfileIntegration
+
+# LM Studio: respuesta visual no vacía
+$env:RUN_LMSTUDIO_VISION_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_vlm.TestRealLMStudioVisionIntegration
+
+# LM Studio: salida estructurada y evidencia por página
+$env:RUN_LMSTUDIO_STRUCTURED_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_structured.TestRealLMStudioStructuredIntegration
+
+# Diagrama: marcador de integración, sin verificaciones reales todavía
+$env:RUN_DIAGRAM_REAL_INTEGRATION = "1"
+.\.venv\Scripts\python.exe -m unittest tests.test_diagram.TestRealDiagramVisionIntegrationOptIn
+```
+
+La prueba de diagramas solo comprueba su activación; no certifica la extracción de diagramas. Las pruebas reales generan resultados dependientes del modelo cargado: revisa sus artefactos antes de aceptarlos.
+
+Para validar de extremo a extremo `cuaderno_campo` con documentos propios:
+
+```powershell
+.\.venv\Scripts\python.exe agent.py documento_con_diagrama.pdf --profile cuaderno_campo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+.\.venv\Scripts\python.exe agent.py cuaderno_con_croquis.pdf --profile cuaderno_campo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+```
+
+Comprueba que `documento_con_diagrama/cuaderno_campo.md` contiene Mermaid, que `cuaderno_con_croquis/cuaderno_campo.md` enlaza el SVG reconstruido y que ambos incorporan `pages/page_001.png`. Estas ejecuciones sí validan el flujo real, pero requieren revisión humana porque el resultado depende del VLM.
+### Primera ejecución y supervisión
+
+Tras instalar y superar las pruebas locales, procesa un documento real en una carpeta separada:
+
+```powershell
+$env:LM_STUDIO_URL = "http://localhost:1234"
+$env:LM_STUDIO_API_KEY = "lm-studio"
+$env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile estadillo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
+```
+
+La salida debe contener `notas.md`, `datos.csv`, `review/datos.xlsx` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
+
+Para supervisar una ejecución real en segundo plano, usa un nombre distinto de `$PID`, que es una variable reservada de PowerShell:
+
+```powershell
+$logDir = "C:\tmp\ocr-monitor"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$run = Start-Process -FilePath ".\.venv\Scripts\python.exe" -ArgumentList "agent.py","documento.pdf","--profile","estadillo","--vision-model",$env:LM_STUDIO_VISION_MODEL,"--output","output_ocr" -PassThru -WindowStyle Hidden -RedirectStandardOutput "$logDir\stdout.log" -RedirectStandardError "$logDir\stderr.log"
+$runPid = $run.Id
+while (Get-Process -Id $runPid -ErrorAction SilentlyContinue) {
+  Get-Process -Id $runPid | Select-Object Id,CPU,WorkingSet64
+  nvidia-smi --query-gpu=memory.used,utilization.gpu --format=csv,noheader
+  Start-Sleep -Seconds 15
+}
+Get-Content "$logDir\stderr.log"
+```
+
+Al terminar, confirma que no quedan procesos `python.exe` asociados al proyecto y que la VRAM volvió al nivel previo. LM Studio puede permanecer activo: es un servicio independiente.
+
+Revisa siempre `review/issues.json` antes de considerar definitiva una digitalización. Los conflictos de cabecera, especies desconocidas, fechas no resueltas y regiones ambiguas requieren validación humana.
+
+## Estructura del repositorio
+
+- `src/fieldnotes/`: aplicación, perfiles, esquemas, OCR, VLM, renderizado y revisión.
+- `tests/`: pruebas unitarias portables y fixtures.
+- `gt/`: resultado revisado usado como referencia de aceptación.
+- `docs/`: arquitectura, arranque, decisiones, riesgos y planificación.
+- `.ai/`, `.gemini/`, `scripts/projectctl.py`: control y trazabilidad del proyecto.
+- `jarvis/`: referencia local ignorada; no forma parte del producto ni se modifica.
+
+## Privacidad y límites
+
+El flujo es local mientras LM Studio y los modelos también lo sean. No se envían documentos a servicios externos desde la aplicación. La calidad final depende de la legibilidad, del modelo cargado y de la revisión humana: Qwen puede vincular archivos por fecha y esquema, pero esa capacidad no convierte inferencias en evidencia.

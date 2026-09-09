@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import csv
+import io
 import math
 import os
 import tempfile
 from pathlib import Path
-from typing import Iterable
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from src.fieldnotes.schemas.estadillo import EstadilloDocument
+from src.fieldnotes.schemas.evidence import EvidenceValue
 
 CSV_HEADER = ("id", "col", "fil", "especie", "altura_cm", "foto", "bbch", "observaciones")
 SHEET_NAME = "Datos"
@@ -90,8 +91,56 @@ def _height(value, row_number: int) -> str:
     return format(number, "g")
 
 
-def publish_estadillo_xlsx(workbook_path: Path, csv_path: Path) -> int:
-    """Validate a review workbook and atomically publish UTF-8 canonical CSV."""
+def _atomic_write_text(destination: Path, content: str) -> None:
+    """Write text atomically without leaving an interrupted publication behind."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    handle, temporary_name = tempfile.mkstemp(prefix=f".tmp_{destination.name}_", dir=destination.parent)
+    try:
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+        os.replace(temporary_name, destination)
+    except Exception:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+        raise
+
+
+def _replace_row_values(document: EstadilloDocument, records: list[list[str]]) -> EstadilloDocument:
+    """Apply reviewed table cells to their original rows while retaining page provenance."""
+    reviewed = document.model_copy(deep=True)
+    rows = [row for page in reviewed.pages for row in page.rows]
+    if len(rows) != len(records):
+        raise ValueError(
+            "El Excel debe conservar exactamente el mismo número y orden de registros que document.json."
+        )
+
+    def text_evidence(value: str, page: int):
+        return EvidenceValue[str](raw=value, normalized=value, source_page=page) if value else None
+
+    def int_evidence(value: str, page: int):
+        return EvidenceValue[int](raw=value, normalized=int(value), source_page=page) if value else None
+
+    def float_evidence(value: str, page: int):
+        return EvidenceValue[float](raw=value, normalized=float(value), source_page=page) if value else None
+
+    for row, values in zip(rows, records):
+        row.id = text_evidence(values[0], row.source_page)
+        row.col = int_evidence(values[1], row.source_page)
+        row.fil = int_evidence(values[2], row.source_page)
+        row.especie = text_evidence(values[3], row.source_page)
+        row.altura_cm = float_evidence(values[4], row.source_page)
+        row.foto = text_evidence(values[5], row.source_page)
+        row.bbch = text_evidence(values[6], row.source_page)
+        row.observaciones = text_evidence(values[7], row.source_page)
+    return reviewed
+
+
+def publish_estadillo_xlsx(
+    workbook_path: Path,
+    csv_path: Path,
+    document_json_path: Path | None = None,
+) -> int:
+    """Validate a review workbook and publish its CSV and optional document JSON together."""
     if not workbook_path.is_file():
         raise FileNotFoundError(f"No existe el libro de revision: {workbook_path}")
     workbook = load_workbook(workbook_path, read_only=True, data_only=False)
@@ -124,16 +173,19 @@ def publish_estadillo_xlsx(workbook_path: Path, csv_path: Path) -> int:
         ])
     workbook.close()
 
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary_name = tempfile.mkstemp(prefix=".tmp_datos_", suffix=".csv", dir=csv_path.parent)
-    try:
-        with os.fdopen(handle, "w", encoding="utf-8", newline="") as stream:
-            writer = csv.writer(stream, lineterminator="\n")
-            writer.writerow(CSV_HEADER)
-            writer.writerows(records)
-        os.replace(temporary_name, csv_path)
-    except Exception:
-        if os.path.exists(temporary_name):
-            os.unlink(temporary_name)
-        raise
+    csv_output = io.StringIO(newline="")
+    writer = csv.writer(csv_output, lineterminator="\n")
+    writer.writerow(CSV_HEADER)
+    writer.writerows(records)
+
+    updated_document: EstadilloDocument | None = None
+    if document_json_path is not None:
+        if not document_json_path.is_file():
+            raise FileNotFoundError(f"No existe document.json: {document_json_path}")
+        original_document = EstadilloDocument.model_validate_json(document_json_path.read_text(encoding="utf-8"))
+        updated_document = _replace_row_values(original_document, records)
+
+    if updated_document is not None:
+        _atomic_write_text(document_json_path, updated_document.model_dump_json(indent=2))
+    _atomic_write_text(csv_path, csv_output.getvalue())
     return len(records)

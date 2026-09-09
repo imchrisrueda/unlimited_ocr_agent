@@ -17,10 +17,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     session_dir = args.session_dir.resolve()
     try:
-        count = publish_estadillo_xlsx(session_dir / "review" / "datos.xlsx", session_dir / "datos.csv")
+        count = publish_estadillo_xlsx(
+            session_dir / "review" / "datos.xlsx",
+            session_dir / "datos.csv",
+            session_dir / "document.json",
+        )
     except (FileNotFoundError, ValueError) as exc:
         parser.error(str(exc))
-    print(f"Publicado datos.csv con {count} registros.")
+    print(f"Publicados datos.csv y document.json con {count} registros.")
     return 0
 
 

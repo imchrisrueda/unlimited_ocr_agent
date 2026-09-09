@@ -78,13 +78,14 @@ Para revisar en Excel:
 
 1. Abre `review/datos.xlsx` y corrige los registros.
 2. Guarda el libro con el mismo nombre.
-3. Publica los cambios en el CSV canónico:
+3. Publica los cambios en los artefactos de datos:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\2026-05-06
 ```
 
-El comando valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y escribe `datos.csv` en UTF-8, con comas como delimitador y punto decimal. Si encuentra un valor inválido, no publica nada.
+El comando valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y actualiza `datos.csv` (UTF-8, comas y punto decimal) y `document.json`, preservando el orden y la página de origen de cada registro. Si cambia el número u orden de las filas, o encuentra un valor inválido, no publica nada.
+
 ### OCR directo
 
 ```powershell

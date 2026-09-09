@@ -48,6 +48,25 @@ class TestEstadilloExcelRoundTrip(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "especie debe ser"):
                 publish_estadillo_xlsx(workbook_path, folder / "datos.csv")
 
+    def test_publish_updates_document_json_with_reviewed_values(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            folder = Path(temp_dir)
+            workbook_path = folder / "datos.xlsx"
+            csv_path = folder / "datos.csv"
+            document_path = folder / "document.json"
+            document = self._document()
+            document_path.write_text(document.model_dump_json(indent=2), encoding="utf-8")
+            export_estadillo_xlsx(document, workbook_path)
+            workbook = load_workbook(workbook_path)
+            workbook["Datos"]["E2"] = "4,75"
+            workbook.save(workbook_path)
+
+            publish_estadillo_xlsx(workbook_path, csv_path, document_path)
+
+            updated = EstadilloDocument.model_validate_json(document_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated.pages[0].rows[0].altura_cm.normalized, 4.75)
+            self.assertEqual(updated.pages[0].rows[0].source_page, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

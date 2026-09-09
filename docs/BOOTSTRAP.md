@@ -54,7 +54,8 @@ output_ocr/<sesión>/
 ├── assets/
 └── review/
     ├── datos.xlsx
-    └── issues.json```
+    └── issues.json
+```
 
 La fecha ISO se usa como carpeta únicamente si aparece de forma inequívoca. La cabecera CSV es:
 
@@ -62,7 +63,13 @@ La fecha ISO se usa como carpeta únicamente si aparece de forma inequívoca. La
 id,col,fil,especie,altura_cm,foto,bbch,observaciones
 ```
 
-No se completan datos ausentes. Revisa siempre `review/issues.json` y la página fuente.
+No se completan datos ausentes. Para conservar las correcciones de Excel en los artefactos de datos, publica el libro:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\<sesión>
+```
+
+El comando actualiza `datos.csv` y `document.json`, sin modificar `notas.md`, las páginas fuente ni los artefactos de revisión. Revisa siempre `review/issues.json` y la página fuente.
 
 ## 5. Perfil cuaderno_campo
 

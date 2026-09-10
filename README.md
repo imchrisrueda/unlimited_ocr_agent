@@ -64,6 +64,31 @@ Los identificadores disponibles dependen de los modelos cargados localmente. Si 
 
 Puedes pasar el modelo directamente con `--vision-model`. Usa exactamente el identificador que expone LM Studio.
 
+### Límite de tokens y VLM para estadillos densos
+
+En el perfil `estadillo`, el límite efectivo predeterminado es **4.096 tokens de salida por página**. El argumento general `--max-tokens` tiene valor inicial `2048`, pero el perfil lo eleva a `4096` cuando no se indica otro valor. El PDF se procesa página a página: no se acumulan todas sus páginas en una sola petición.
+
+El mensaje `finish_reason='length'` (o «se superó el límite de tokens») significa que el VLM agotó ese presupuesto de **salida** antes de terminar el JSON de una página. Es más habitual en una tabla manuscrita muy densa: la petición también contiene la imagen, el OCR bruto, las instrucciones y el esquema de respuesta. Aumentar solo la ventana de contexto no elimina ese límite de salida.
+
+Prueba primero con 8.192 y, solo si la página sigue truncándose, con 16.384:
+
+```powershell
+.\.venv\Scripts\python.exe agent.py documento.pdf --profile estadillo --vision-model $env:LM_STUDIO_VISION_MODEL --max-tokens 8192 --output output_ocr
+```
+
+Para que funcione, la longitud de contexto configurada en LM Studio debe poder alojar **entrada + salida**. Sube allí el contexto del modelo si es necesario, deja margen para la imagen y el OCR, y confirma que la cuantización cargada acepta imágenes. Cada incremento usa más VRAM y tarda más; no subas el valor por encima de lo que requiera una página real. Si una sola página excepcionalmente llena aún se trunca con 16.384, conviene dividirla visualmente antes de extraerla o usar un VLM de mayor contexto.
+
+Modelos VLM que son buenas opciones locales para este caso (tablas, OCR y salida JSON estructurada):
+
+| Modelo | Ventana declarada | Cuándo elegirlo |
+| --- | --- | --- |
+| [`Qwen3-VL-8B-Instruct`](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct) | 262K | Primera opción práctica: admite imagen y deja margen amplio para OCR, esquema y una salida de 8K–16K con una GPU razonable. |
+| [`Qwen3-VL-32B-Instruct`](https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct) | Verifica la configuración de la cuantización en LM Studio | Para manuscritos y tablas difíciles si dispones de mucha VRAM; prioriza precisión sobre velocidad. Es un VLM, no confundas este nombre con un Qwen solo-texto. |
+| [Gemma 3 12B o 27B](https://ai.google.dev/gemma/docs/core/model_card_3) | 128K | Alternativa multimodal sólida cuando la variante de Qwen disponible no cabe o no da buena lectura visual. Las variantes 12B/27B aceptan imágenes. |
+| [`Qwen2.5-VL-7B/32B-Instruct`](https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct) | 32K nativos | Opción compatible y suficiente para la mayoría de páginas, pero ofrece menos margen que las anteriores para OCR muy largo y salidas extensas. |
+
+Las cifras son capacidades de los modelos originales, no una garantía de la cuantización ni de la configuración local: LM Studio puede cargar un contexto menor según VRAM. Tras descargar uno, comprueba en su ficha que es **vision/multimodal**, configura su contexto efectivo y copia el identificador anunciado por el servidor en `LM_STUDIO_VISION_MODEL`. Un modelo listado como `text`, `embedding` o que no acepta imágenes no sirve como VLM aunque tenga una gran ventana de contexto.
+
 ## Modos de uso
 
 ### Estadillo — entrega recomendada

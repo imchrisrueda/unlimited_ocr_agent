@@ -18,7 +18,7 @@ from src.fieldnotes.review.crops import generate_review_crops_for_issues
 from src.fieldnotes.merge.estadillo import merge_estadillo_pages
 from src.fieldnotes.normalization.estadillo import normalize_species, complete_implied_coordinates
 from src.fieldnotes.validation.estadillo import validate_estadillo_document
-from src.fieldnotes.render.excel import export_estadillo_xlsx
+from src.fieldnotes.render.excel import export_estadillo_xlsx, estadillo_review_workbook_name
 from src.fieldnotes.render.estadillo_delivery import (
     render_estadillo_csv,
     render_estadillo_notes,
@@ -357,7 +357,10 @@ class EstadilloProfile:
             write_atomic_file(csv_path, csv_output)
             write_atomic_file(document_json_path, validated_doc.model_dump_json(indent=2))
             write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
-            export_estadillo_xlsx(validated_doc, staging_review_dir / "datos.xlsx")
+            export_estadillo_xlsx(
+                validated_doc,
+                staging_review_dir / estadillo_review_workbook_name(session_name),
+            )
 
             # 9. Publicación atómica de staging a canonical_dir con rollback
             if canonical_dir.exists():

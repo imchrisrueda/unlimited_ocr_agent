@@ -32,10 +32,10 @@ Aplicación CLI local que transforma PDF o imágenes de notas de campo en artefa
 | Perfil | Uso | Salida principal |
 |---|---|---|
 | `default` | OCR, consulta o exportación general | respuesta, Markdown o PDF solicitado |
-| `estadillo` | jornadas tabulares de campo | `<fecha>/notas.md`, `datos.csv` y `review/datos.xlsx` |
+| `estadillo` | jornadas tabulares de campo | `<fecha>/notas.md`, `datos.csv` y `review/datos_<sesión>.xlsx` |
 | `notebook` | cuadernos heterogéneos | `<stem>/notebook.md` |
 
-El perfil estadillo publica además `document.json`, `pages/`, `raw/`, `assets/` y `review/`. El comando `publish_estadillo_excel.py` sincroniza las correcciones de `review/datos.xlsx` con `datos.csv` y `document.json`, conservando el orden y la procedencia por página. Si la fecha no es inequívoca, usa un nombre seguro derivado del archivo y crea una incidencia; nunca inventa la fecha.
+El perfil estadillo publica además `document.json`, `pages/`, `raw/`, `assets/` y `review/`. El comando `publish_estadillo_excel.py` localiza `review/datos_<sesión>.xlsx` y sincroniza sus correcciones con todas las representaciones derivadas de las filas: `datos.csv` y `document.json`, conservando el orden y la procedencia por página. Si la fecha no es inequívoca, usa un nombre seguro derivado del archivo tanto para la carpeta como para el libro y crea una incidencia; nunca inventa la fecha.
 
 ## Interfaces
 

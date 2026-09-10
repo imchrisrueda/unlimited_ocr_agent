@@ -213,6 +213,7 @@ class TestEstadilloProfileUnit(unittest.TestCase):
             self.assertTrue((doc_dir / "pages").is_dir())
             self.assertTrue((doc_dir / "raw").is_dir())
             self.assertTrue((doc_dir / "review").is_dir())
+            self.assertTrue((doc_dir / "review" / "datos_estadillo_sample.xlsx").is_file())
             self.assertTrue((doc_dir / "review" / "issues.json").is_file())
 
             # Roundtrip de document.json

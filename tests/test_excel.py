@@ -5,7 +5,11 @@ from pathlib import Path
 
 from openpyxl import load_workbook
 
-from src.fieldnotes.render.excel import export_estadillo_xlsx, publish_estadillo_xlsx
+from src.fieldnotes.render.excel import (
+    estadillo_review_workbook_name,
+    export_estadillo_xlsx,
+    publish_estadillo_xlsx,
+)
 from src.fieldnotes.schemas.evidence import EvidenceValue
 from src.fieldnotes.schemas.estadillo import EstadilloDocument, EstadilloPage, EstadilloRow
 
@@ -21,6 +25,12 @@ class TestEstadilloExcelRoundTrip(unittest.TestCase):
             bbch=EvidenceValue[str](raw="22", normalized="22", source_page=1),
         )
         return EstadilloDocument(source_file="sample.pdf", pages=[EstadilloPage(page_number=1, rows=[row])])
+
+    def test_review_workbook_name_includes_session_date(self):
+        self.assertEqual(
+            estadillo_review_workbook_name("2026-05-06"),
+            "datos_2026-05-06.xlsx",
+        )
 
     def test_export_and_publish_accepts_spanish_decimal(self):
         with tempfile.TemporaryDirectory() as temp_dir:

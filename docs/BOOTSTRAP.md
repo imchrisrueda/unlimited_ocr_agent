@@ -29,7 +29,7 @@ nvidia-smi
 
 | Necesidad | Perfil | Entrega principal |
 | --- | --- | --- |
-| Estadillo agronómico o forestal | `estadillo` | `notas.md`, `datos.csv` y `review/datos.xlsx` |
+| Estadillo agronómico o forestal | `estadillo` | `notas.md`, `datos.csv` y `review/datos_<sesión>.xlsx` |
 | Cuaderno visual y secuencial | `cuaderno_campo` | `cuaderno_campo.md` |
 | Documento mixto heredado | `notebook` | `notebook.md` |
 | OCR sin VLM | `--raw` | Texto OCR |
@@ -53,7 +53,7 @@ output_ocr/<sesión>/
 ├── raw/
 ├── assets/
 └── review/
-    ├── datos.xlsx
+    ├── datos_<sesión>.xlsx
     └── issues.json
 ```
 
@@ -69,7 +69,7 @@ No se completan datos ausentes. Para conservar las correcciones de Excel en los 
 .\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\<sesión>
 ```
 
-El comando actualiza `datos.csv` y `document.json`, sin modificar `notas.md`, las páginas fuente ni los artefactos de revisión. Revisa siempre `review/issues.json` y la página fuente.
+El comando localiza `review/datos_<sesión>.xlsx` a partir del nombre de la carpeta y actualiza `datos.csv` y `document.json`, las dos representaciones derivadas de las filas editables. No modifica `notas.md`, las páginas fuente ni los artefactos de revisión, que no contienen esas celdas. Revisa siempre `review/issues.json` y la página fuente.
 
 ## 5. Perfil cuaderno_campo
 

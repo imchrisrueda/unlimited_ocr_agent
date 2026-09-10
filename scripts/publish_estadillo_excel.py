@@ -1,4 +1,4 @@
-"""Publish a reviewed Excel workbook as the canonical estadillo CSV."""
+"""Publish a reviewed dated Excel workbook to canonical estadillo data artifacts."""
 from __future__ import annotations
 
 import argparse
@@ -8,17 +8,21 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.fieldnotes.render.excel import publish_estadillo_xlsx
+from src.fieldnotes.render.excel import estadillo_review_workbook_name, publish_estadillo_xlsx
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("session_dir", type=Path, help="Directorio de sesion que contiene review/datos.xlsx")
+    parser.add_argument(
+        "session_dir",
+        type=Path,
+        help="Directorio de sesión que contiene review/datos_<sesión>.xlsx",
+    )
     args = parser.parse_args(argv)
     session_dir = args.session_dir.resolve()
     try:
         count = publish_estadillo_xlsx(
-            session_dir / "review" / "datos.xlsx",
+            session_dir / "review" / estadillo_review_workbook_name(session_dir.name),
             session_dir / "datos.csv",
             session_dir / "document.json",
         )

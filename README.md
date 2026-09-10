@@ -97,11 +97,11 @@ Las cifras son capacidades de los modelos originales, no una garantía de la cua
 .\.venv\Scripts\python.exe agent.py 26-05-06.pdf --profile estadillo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
 ```
 
-Genera la entrega canónica `<fecha>/notas.md` y `<fecha>/datos.csv`, y el libro de revisión `<fecha>/review/datos.xlsx`. Si la fecha no está respaldada de forma inequívoca, conserva un directorio seguro basado en el archivo y registra `SESSION_DATE_UNRESOLVED`.
+Genera la entrega canónica `<fecha>/notas.md` y `<fecha>/datos.csv`, y el libro de revisión `<fecha>/review/datos_<fecha>.xlsx`. Si la fecha no está respaldada de forma inequívoca, conserva un directorio seguro basado en el archivo y registra `SESSION_DATE_UNRESOLVED`; ese nombre seguro también se usa en el libro, por ejemplo `datos_documento.xlsx`.
 
 Para revisar en Excel:
 
-1. Abre `review/datos.xlsx` y corrige los registros.
+1. Abre `review/datos_<sesión>.xlsx` (por ejemplo, `review/datos_2026-05-06.xlsx`) y corrige los registros.
 2. Guarda el libro con el mismo nombre.
 3. Publica los cambios en los artefactos de datos:
 
@@ -109,7 +109,7 @@ Para revisar en Excel:
 .\.venv\Scripts\python.exe scripts\publish_estadillo_excel.py output_ocr\2026-05-06
 ```
 
-El comando valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y actualiza `datos.csv` (UTF-8, comas y punto decimal) y `document.json`, preservando el orden y la página de origen de cada registro. Si cambia el número u orden de las filas, o encuentra un valor inválido, no publica nada.
+El comando resuelve automáticamente el libro fechado de esa sesión, valida la cabecera, las coordenadas, especies y BBCH. Acepta coma o punto en `altura_cm` y actualiza todas las representaciones derivadas de las filas editadas: `datos.csv` (UTF-8, comas y punto decimal) y `document.json`. Preserva el orden y la página de origen de cada registro. `notas.md`, las páginas fuente y los artefactos de revisión no contienen esas celdas y no se modifican. Si cambia el número u orden de las filas, o encuentra un valor inválido, no publica nada.
 
 ### OCR directo
 
@@ -269,7 +269,7 @@ $env:LM_STUDIO_VISION_MODEL = "identificador-del-qwen-multimodal"
 .\.venv\Scripts\python.exe agent.py documento.pdf --profile estadillo --vision-model $env:LM_STUDIO_VISION_MODEL --output output_ocr
 ```
 
-La salida debe contener `notas.md`, `datos.csv`, `review/datos.xlsx` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
+La salida debe contener `notas.md`, `datos.csv`, `review/datos_<sesión>.xlsx` y `review/issues.json`. No des por definitiva una digitalización con incidencias: revisa los crops de `review/` y la fuente visual.
 
 Para supervisar una ejecución real en segundo plano, usa un nombre distinto de `$PID`, que es una variable reservada de PowerShell:
 

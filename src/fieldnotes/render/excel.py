@@ -19,6 +19,13 @@ CSV_HEADER = ("id", "col", "fil", "especie", "altura_cm", "foto", "bbch", "obser
 SHEET_NAME = "Datos"
 
 
+def estadillo_review_workbook_name(session_name: str) -> str:
+    """Return the dated review workbook filename for one session directory."""
+    if not session_name or session_name in {".", ".."}:
+        raise ValueError("El nombre de sesión debe ser un nombre de directorio válido.")
+    return f"datos_{session_name}.xlsx"
+
+
 def _value(evidence):
     if evidence is None:
         return None

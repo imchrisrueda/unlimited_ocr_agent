@@ -91,6 +91,45 @@ Las cifras son capacidades de los modelos originales, no una garantía de la cua
 
 ## Modos de uso
 
+### Imágenes, progreso y memoria
+
+Las carpetas de imágenes se combinan en orden natural (`pagina_2` antes de
+`pagina_10`), sin recorrer subcarpetas. `--images` conserva el orden explícito
+de los argumentos. Se admiten PNG, JPG/JPEG, TIFF, BMP y WebP. Para los perfiles
+estructurados, una imagen individual se convierte automáticamente en PDF.
+
+```powershell
+python agent.py .\entrada\2026-06-26\ --profile cuaderno_campo --no-diagrams
+python agent.py --images foto1.png foto2.png --profile notebook --diagram-pages 1,2
+python agent.py documento.pdf --profile cuaderno_campo --keep-models-loaded
+python agent.py --unload-all
+```
+
+`--no-diagrams` (alias `--text-only`) desactiva los diagramas en `notebook` y
+`cuaderno_campo`; el texto en recuadros sigue transcribiéndose. `--diagram-pages`
+limita los diagramas a páginas numeradas desde 1. Si se combinan ambas opciones,
+`--no-diagrams` prevalece. También pueden configurarse `extract_diagrams` y
+`diagram_pages` en el JSON de `--config`; los argumentos explícitos prevalecen.
+
+La barra de progreso aparece en terminales interactivas y muestra fases y
+detalles del análisis VLM por página. Su ETA es una estimación por fases, no una
+medición del progreso interno de inferencia. `--no-progress` la desactiva;
+`--quiet` también reduce algunos mensajes informativos, manteniendo el resultado
+y el resumen. `--verbose` muestra la entrada efectiva y los modelos configurados.
+
+El OCR aislado libera sus recursos al salir del worker. Al terminar la CLI,
+incluso por una excepción, se cierran la barra y la carpeta temporal de conversión
+y se intenta descargar los modelos VLM de la sesión. `--keep-models-loaded`
+conserva los modelos de LM Studio; `--keep-intermediate` conserva los artefactos
+de ejecución. La limpieza de memoria es independiente de conservar artefactos.
+`--unload-all` solicita además la descarga de todos los modelos cargados.
+Las descargas utilizan la API nativa y, si falla, el CLI `lms`; requieren que
+el servidor o el CLI estén disponibles. No garantizan dejar toda la GPU libre,
+pues otros procesos pueden seguir utilizando memoria.
+
+Consulta [la revisión de estas mejoras](docs/REVIEW_2026-09-14.md) para conocer
+las correcciones y los límites de verificación.
+
 ### Estadillo — entrega recomendada
 
 ```powershell

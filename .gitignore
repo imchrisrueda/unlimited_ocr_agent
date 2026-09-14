@@ -14,3 +14,6 @@ validation_*/
 *.err.log
 /diagrama.pdf
 /notas_campo.pdf
+
+/.test-tmp/
+/review_tests.log

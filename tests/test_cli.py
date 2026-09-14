@@ -7,6 +7,24 @@ from src.fieldnotes.artifacts import PageArtifact
 
 
 class TestCLI(unittest.TestCase):
+    @patch("src.fieldnotes.cli.UnlimitedOCRAgent")
+    def test_cleanup_on_ocr_failure(self, mock_agent_class):
+        agent = mock_agent_class.return_value
+        agent.extract_from_pdf.side_effect = RuntimeError("OCR failed")
+        with self.assertRaisesRegex(RuntimeError, "OCR failed"):
+            main(["doc.pdf", "--raw", "--no-progress"])
+        agent.unload_all.assert_called_once()
+        agent.cleanup.assert_called_once()
+
+    @patch("src.fieldnotes.cli.UnlimitedOCRAgent")
+    def test_keep_models_on_failure_still_releases_ocr(self, mock_agent_class):
+        agent = mock_agent_class.return_value
+        agent.extract_from_pdf.side_effect = RuntimeError("OCR failed")
+        with self.assertRaises(RuntimeError):
+            main(["doc.pdf", "--raw", "--keep-models-loaded", "--keep-intermediate"])
+        agent.unload_ocr.assert_called_once()
+        agent.unload_all.assert_not_called()
+        agent.cleanup.assert_not_called()
     def test_build_parser(self):
         parser = build_parser()
         args = parser.parse_args(["test.pdf", "--raw"])
@@ -120,6 +138,90 @@ class TestCLI(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 main(["image.png", "--ask-vision"])
             self.assertEqual(ctx.exception.code, 2)
+
+    def test_main_execution_missing_file_path_and_images_exits(self):
+        with self.assertRaises(SystemExit) as ctx:
+            main([])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_parser_usability_flags(self):
+        parser = build_parser()
+        args = parser.parse_args(["doc.pdf", "--no-progress", "--quiet", "--verbose"])
+        self.assertTrue(args.no_progress)
+        self.assertTrue(args.quiet)
+        self.assertTrue(args.verbose)
+
+    @patch("src.fieldnotes.cli.UnlimitedOCRAgent")
+    @patch("builtins.print")
+    def test_main_execution_folder_with_images_cuaderno_campo(self, mock_print, mock_agent_class):
+        import tempfile
+        import shutil
+        from PIL import Image
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="test_cli_folder_"))
+        try:
+            folder = temp_dir / "2026-09-14"
+            folder.mkdir()
+            img1 = folder / "p1.png"
+            Image.new("RGB", (20, 20), "red").save(img1)
+            img2 = folder / "p2.png"
+            Image.new("RGB", (20, 20), "blue").save(img2)
+
+            mock_agent = MagicMock()
+            mock_agent_class.return_value = mock_agent
+            mock_doc = MagicMock()
+            mock_doc.pages = []
+            mock_doc.estadillo_rows = []
+            mock_doc.sections = []
+            mock_doc.tables = []
+            mock_doc.diagrams = []
+            mock_doc.warnings = []
+            mock_agent.process_cuaderno_campo.return_value = ("# Markdown", mock_doc)
+
+            main([
+                str(folder),
+                "--profile", "cuaderno_campo",
+                "--vision-model", "qwen/qwen3.5-9b",
+                "--no-progress",
+            ])
+
+            mock_agent.process_cuaderno_campo.assert_called_once()
+            called_file_path = mock_agent.process_cuaderno_campo.call_args.kwargs["file_path"]
+            # Debe haberse convertido a un PDF
+            self.assertTrue(called_file_path.lower().endswith(".pdf"))
+            self.assertIn("2026-09-14", Path(called_file_path).stem)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @patch("src.fieldnotes.cli.UnlimitedOCRAgent")
+    @patch("builtins.print")
+    def test_main_execution_images_flag(self, mock_print, mock_agent_class):
+        import tempfile
+        import shutil
+        from PIL import Image
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="test_cli_images_flag_"))
+        try:
+            img1 = temp_dir / "f1.png"
+            Image.new("RGB", (20, 20), "red").save(img1)
+            img2 = temp_dir / "f2.png"
+            Image.new("RGB", (20, 20), "blue").save(img2)
+
+            mock_agent = MagicMock()
+            mock_agent_class.return_value = mock_agent
+            mock_agent.extract_from_pdf.return_value = "pdf text"
+
+            main([
+                "--images", str(img1), str(img2),
+                "--raw",
+                "--no-progress",
+            ])
+
+            mock_agent.extract_from_pdf.assert_called_once()
+            called_pdf = mock_agent.extract_from_pdf.call_args[0][0]
+            self.assertTrue(called_pdf.lower().endswith(".pdf"))
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

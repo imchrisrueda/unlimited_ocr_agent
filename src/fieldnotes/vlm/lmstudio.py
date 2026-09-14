@@ -1,7 +1,11 @@
 import base64
+import json
 import os
 from pathlib import Path
+import subprocess
 from typing import Optional, Literal, Any, TypeVar, Type
+import urllib.error
+import urllib.request
 import openai
 from openai import (
     APIConnectionError,
@@ -123,6 +127,15 @@ class LMStudioClient:
         self._default_legacy_model = default_model
         self.validate_model = validate_model
         self._validated_models: set[str] = set()
+        self._models_used: set[str] = set()
+
+    @property
+    def server_root_url(self) -> str:
+        """URL base del servidor LM Studio sin sufijo /v1."""
+        url = str(self.client.base_url).rstrip("/")
+        if url.endswith("/v1"):
+            url = url[:-3]
+        return url.rstrip("/")
 
     @property
     def vision_model(self) -> Optional[str]:
@@ -243,6 +256,7 @@ class LMStudioClient:
                 )
             self._validated_models.add(candidate)
 
+        self._models_used.add(candidate)
         return candidate
 
     def _execute_chat_completion(self, kwargs: dict[str, Any], resolved_model: str) -> str:
@@ -517,6 +531,139 @@ class LMStudioClient:
             reasoning_effort=reasoning_effort,
             max_tokens=max_tokens,
         )
+
+    def get_loaded_models(self) -> list[str]:
+        """Consulta LM Studio para obtener los identificadores de modelos cargados en memoria."""
+        loaded_ids: list[str] = []
+
+        # Intento 1: API REST nativa de LM Studio (GET /api/v1/models)
+        try:
+            req_url = f"{self.server_root_url}/api/v1/models"
+            req = urllib.request.Request(req_url)
+            if self.client.api_key:
+                req.add_header("Authorization", f"Bearer {self.client.api_key}")
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                for model_info in data.get("models", []):
+                    for inst in model_info.get("loaded_instances", []):
+                        inst_id = inst.get("id")
+                        if inst_id and inst_id not in loaded_ids:
+                            loaded_ids.append(inst_id)
+        except Exception:
+            pass
+
+        # Intento 2: Fallback CLI `lms ps`
+        if not loaded_ids:
+            try:
+                res = subprocess.run(
+                    ["lms", "ps", "--json"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if res.returncode == 0 and res.stdout:
+                    for model in json.loads(res.stdout):
+                        ident = model.get("identifier")
+                        if ident and ident not in loaded_ids:
+                            loaded_ids.append(ident)
+            except Exception:
+                pass
+
+        return loaded_ids
+
+    def unload_model(self, model_identifier: Optional[str] = None) -> bool:
+        """Descarga un modelo de la memoria GPU/RAM de LM Studio.
+
+        Intenta primero la API REST nativa POST /api/v1/models/unload y recurre
+        al comando CLI 'lms unload' si la API REST no está disponible.
+        """
+        ident = model_identifier or self._vision_model or self.model
+        if not ident:
+            return False
+
+        success = False
+
+        # Intento 1: Endpoint REST nativo de LM Studio POST /api/v1/models/unload
+        try:
+            req_url = f"{self.server_root_url}/api/v1/models/unload"
+            payload = json.dumps({"instance_id": ident}).encode("utf-8")
+            req = urllib.request.Request(
+                req_url,
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            if self.client.api_key:
+                req.add_header("Authorization", f"Bearer {self.client.api_key}")
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                if resp.status in (200, 204):
+                    success = True
+        except urllib.error.HTTPError:
+            # Un 404 también puede indicar una API no disponible: probar el CLI.
+            pass
+        except Exception:
+            pass
+
+        # Intento 2: Fallback CLI con `lms unload <ident>`
+        if not success:
+            try:
+                res = subprocess.run(
+                    ["lms", "unload", ident],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if res.returncode == 0:
+                    success = True
+            except Exception:
+                pass
+
+        if success:
+            self._models_used.discard(ident)
+            self._validated_models.discard(ident)
+
+        return success
+
+    def unload_used_models(self) -> list[str]:
+        """Descarga todos los modelos de LM Studio que fueron utilizados durante la sesión."""
+        candidates = set(self._models_used)
+        if self._vision_model:
+            candidates.add(self._vision_model)
+        if self._text_model:
+            candidates.add(self._text_model)
+        if self._default_legacy_model:
+            candidates.add(self._default_legacy_model)
+
+        unloaded: list[str] = []
+        for m in candidates:
+            if m and self.unload_model(m):
+                unloaded.append(m)
+        return unloaded
+
+    def unload_all_models(self) -> list[str]:
+        """Descarga todos los modelos cargados en LM Studio para liberar completamente la memoria GPU/RAM."""
+        loaded = self.get_loaded_models()
+        unloaded: list[str] = []
+        for m in loaded:
+            if self.unload_model(m):
+                unloaded.append(m)
+
+        # Fallback universal `lms unload --all` para asegurar limpieza total
+        try:
+            res = subprocess.run(
+                ["lms", "unload", "--all"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if res.returncode == 0:
+                pass
+        except Exception:
+            pass
+
+        self._models_used.clear()
+        self._validated_models.clear()
+        return unloaded
 
 
 __all__ = [

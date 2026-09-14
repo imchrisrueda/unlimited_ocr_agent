@@ -4,9 +4,28 @@ import os
 import sys
 import shutil
 import subprocess
+from unittest.mock import MagicMock
 from pathlib import Path
 from src.fieldnotes.artifacts import PageArtifact
 from src.fieldnotes.ocr.unlimited import split_page_blocks, process_page_artifacts
+
+
+class TestSequentialOCR(unittest.TestCase):
+    def test_preserves_page_text_verbatim(self):
+        from src.fieldnotes.ocr.unlimited import UnlimitedOCR
+        with tempfile.TemporaryDirectory() as directory:
+            ocr = object.__new__(UnlimitedOCR)
+            ocr.output_dir = directory
+            ocr.tokenizer = MagicMock()
+            texts = ["línea\r\n\r\n", "  final sin salto"]
+            def infer(*args, **kwargs):
+                with open(Path(kwargs["output_path"]) / "result.md", "w", encoding="utf-8", newline="") as output:
+                    output.write(texts.pop(0))
+            ocr.model = MagicMock()
+            ocr.model.infer.side_effect = infer
+            result = ocr.extract_from_images(["page1.png", "page2.png"])
+            self.assertEqual(result, "<PAGE>línea\r\n\r\n<PAGE>  final sin salto")
+            self.assertEqual((Path(directory) / "result.md").read_bytes(), result.encode("utf-8"))
 
 
 class TestOCRSplitter(unittest.TestCase):

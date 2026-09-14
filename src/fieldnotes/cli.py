@@ -1,6 +1,9 @@
 import argparse
 import json
 import os
+import sys
+import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Optional
 from .pipeline import UnlimitedOCRAgent
@@ -11,11 +14,58 @@ from .config import (
     NotebookConfig,
 )
 from .profiles.estadillo import safe_document_stem
+from .progress import PipelineProgress
+from .ingest.images import prepare_input_source, convert_images_to_pdf, is_image_file
+
+
+CLI_EPILOG = r"""
+Ejemplos de uso:
+  # Procesar estadillo agronómico o forestal desde PDF:
+  python agent.py 26-05-06.pdf --profile estadillo
+
+  # Procesar cuaderno de campo (se extrae texto y diagramas/croquis):
+  python agent.py .\entrada\2026-06-26\notas_campo_2026-06-26.pdf --profile cuaderno_campo
+
+  # Procesar cuaderno de campo priorizando solo texto limpio y ordenado (sin diagramas):
+  python agent.py .\entrada\2026-06-26\notas_campo_2026-06-26.pdf --profile cuaderno_campo --no-diagrams
+
+  # Procesar cuaderno de campo extrayendo diagramas solo en páginas específicas:
+  python agent.py .\entrada\2026-06-26\notas_campo_2026-06-26.pdf --profile cuaderno_campo --diagram-pages 2
+
+  # Procesar fotos de una carpeta como cuaderno de campo (se convierte automáticamente a PDF):
+  python agent.py .\entrada\2026-09-14\ --profile cuaderno_campo
+
+  # Procesar lista de fotos específicas combinadas en un único PDF:
+  python agent.py --images foto1.png foto2.png --profile cuaderno_campo
+
+  # Liberar inmediatamente toda la memoria VRAM y descargar todos los modelos en LM Studio:
+  python agent.py --unload-all
+
+  # Extracción visual multimodal directa sobre una imagen:
+  python agent.py page.png --ask-vision --vision-model qwen/qwen3.5-9b
+
+  # Digitalización directa con Unlimited-OCR (sin LLM):
+  python agent.py documento.pdf --raw
+"""
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="Agente IA: Unlimited-OCR + LM Studio")
-    parser.add_argument("file_path", help="Ruta de la imagen o archivo PDF a digitalizar")
+    parser = argparse.ArgumentParser(
+        description="Agente IA: Unlimited-OCR + LM Studio para digitalización de notas de campo.",
+        epilog=CLI_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "file_path",
+        nargs="?",
+        default=None,
+        help="Ruta del archivo PDF, imagen o carpeta con imágenes a digitalizar",
+    )
+    parser.add_argument(
+        "--images",
+        nargs="+",
+        help="Lista de rutas de imágenes individuales para combinar y procesar como un único documento PDF",
+    )
     parser.add_argument(
         "--profile",
         choices=("default", "estadillo", "notebook", "cuaderno_campo"),
@@ -25,6 +75,19 @@ def build_parser():
     parser.add_argument(
         "--config",
         help="Ruta al archivo JSON de configuración tipada para el perfil (p. ej. NotebookConfig)",
+    )
+    parser.add_argument(
+        "--no-diagrams",
+        "--text-only",
+        action="store_true",
+        dest="no_diagrams",
+        help="Desactiva la extracción e inferencia de diagramas/croquis; prioriza la transcripción de texto limpio y ordenado",
+    )
+    parser.add_argument(
+        "--diagram-pages",
+        type=str,
+        default=None,
+        help="Lista de páginas específicas (separadas por coma, p. ej. '1,3' o '2') donde extraer diagramas/croquis",
     )
     parser.add_argument(
         "--output",
@@ -110,12 +173,67 @@ def build_parser():
         default=None,
         help="Tiempo límite en segundos para el worker de OCR (por defecto 1800 s)",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="Desactiva la barra de progreso en el terminal",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Modo silencioso: reduce mensajes informativos y silencia la barra de carga",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Modo detallado: muestra información adicional de diagnóstico",
+    )
+    parser.add_argument(
+        "--keep-models-loaded",
+        action="store_true",
+        help="No descarga el modelo VLM de LM Studio al completar la digitalización (por defecto se descarga para liberar VRAM)",
+    )
+    parser.add_argument(
+        "--unload-all",
+        action="store_true",
+        help="Descarga inmediatamente todos los modelos cargados en LM Studio y libera la memoria VRAM/RAM sin procesar ningún documento",
+    )
     return parser
 
 
 def main(args=None):
+    with ExitStack() as resources:
+        return _main(args, resources)
+
+
+def _main(args, resources):
     parser = build_parser()
     parsed_args = parser.parse_args(args)
+
+    if parsed_args.unload_all:
+        from .vlm.lmstudio import LMStudioClient
+        from .config import get_lm_studio_url, get_lm_studio_api_key
+        client = LMStudioClient(base_url=get_lm_studio_url(), api_key=get_lm_studio_api_key(), validate_model=False)
+        print("Descargando todos los modelos de LM Studio y liberando memoria VRAM/RAM...")
+        unloaded = client.unload_all_models()
+        if unloaded:
+            print(f"Modelos descargados exitosamente de LM Studio: {', '.join(unloaded)}")
+        else:
+            print("No se detectaron modelos cargados o se completó la descarga global.")
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+        except Exception:
+            pass
+        return
+
+    if not parsed_args.file_path and not parsed_args.images:
+        parser.error("Debe especificarse 'file_path' o la opción '--images'")
 
     if parsed_args.worker_timeout is not None and parsed_args.worker_timeout <= 0:
         parser.error("--worker-timeout must be a positive integer")
@@ -130,10 +248,6 @@ def main(args=None):
             instruction = f.read().strip()
 
     # Precedencia exacta de resolución de modelos en CLI:
-    # 1. Flag específico CLI (--vision-model / --text-model)
-    # 2. Variable de entorno específica (LM_STUDIO_VISION_MODEL / LM_STUDIO_TEXT_MODEL)
-    # 3. Flag legacy CLI (--lm-model)
-    # 4. Variable de entorno legacy (LM_STUDIO_MODEL)
     legacy_env = get_lm_studio_legacy_model()
     vision_model = (
         parsed_args.vision_model
@@ -148,26 +262,97 @@ def main(args=None):
         or legacy_env
     )
 
-    # Pre-validación de --config
+    # Pre-validación de flags específicos de cuaderno
     if parsed_args.config and parsed_args.profile not in ("notebook", "cuaderno_campo"):
-        parser.error("--config solo es compatible con --profile notebook")
+        parser.error("--config solo es compatible con --profile notebook o cuaderno_campo")
+
+    if (parsed_args.no_diagrams or parsed_args.diagram_pages) and parsed_args.profile not in ("notebook", "cuaderno_campo"):
+        parser.error("--no-diagrams y --diagram-pages solo son compatibles con los perfiles 'cuaderno_campo' y 'notebook'")
+
+    parsed_diagram_pages: Optional[list[int]] = None
+    if parsed_args.diagram_pages:
+        try:
+            parsed_diagram_pages = [int(p.strip()) for p in parsed_args.diagram_pages.split(",") if p.strip()]
+            for p in parsed_diagram_pages:
+                if p < 1:
+                    raise ValueError(f"Los números de página deben ser enteros >= 1, obtenido: {p}")
+            if not parsed_diagram_pages:
+                raise ValueError("La lista de páginas no puede estar vacía.")
+        except Exception as exc:
+            parser.error(f"Formato inválido para --diagram-pages: {exc}")
+
+    # Iniciar barra de progreso (auto-detecta terminal interactiva o flag explícito)
+    show_progress = None if (not parsed_args.no_progress and not parsed_args.quiet) else False
+    progress = PipelineProgress(
+        total_phases=7 if parsed_args.profile in ("estadillo", "notebook", "cuaderno_campo") else 5,
+        enabled=show_progress,
+        desc="Digitalizando",
+    )
+    resources.callback(progress.close)
+    input_workspace = resources.enter_context(tempfile.TemporaryDirectory(prefix="fieldnotes_input_"))
+
+    # Preparación de entrada (carpetas de imágenes o lista de imágenes a PDF)
+    target_input = parsed_args.file_path
+    converted_pdf_path: Optional[Path] = None
+
+    if parsed_args.images:
+        progress.set_phase(1, "Preparando entrada", f"Combinando {len(parsed_args.images)} imágenes en PDF...")
+        stem = safe_document_stem(parsed_args.images[0])
+        tmp_pdf = Path(input_workspace) / f"{stem}.pdf"
+        try:
+            converted_pdf_path = convert_images_to_pdf(parsed_args.images, tmp_pdf)
+            target_input = str(converted_pdf_path)
+        except Exception as exc:
+            progress.close()
+            parser.error(f"Error al convertir imágenes especificadas en --images: {exc}")
+    elif parsed_args.file_path and os.path.isdir(parsed_args.file_path):
+        progress.set_phase(1, "Preparando entrada", f"Convirtiendo carpeta '{Path(parsed_args.file_path).name}' a PDF...")
+        try:
+            tmp_pdf, was_converted, stem = prepare_input_source(parsed_args.file_path, working_dir=input_workspace)
+            if was_converted:
+                converted_pdf_path = tmp_pdf
+                target_input = str(tmp_pdf)
+        except Exception as exc:
+            progress.close()
+            parser.error(f"Error al procesar carpeta de entrada: {exc}")
+    elif parsed_args.file_path and is_image_file(parsed_args.file_path) and parsed_args.profile in ("estadillo", "notebook", "cuaderno_campo"):
+        # Para perfiles estructurados con imagen única, convertir a PDF previo
+        progress.set_phase(1, "Preparando entrada", f"Convirtiendo imagen '{Path(parsed_args.file_path).name}' a PDF...")
+        try:
+            tmp_pdf, was_converted, stem = prepare_input_source(parsed_args.file_path, working_dir=input_workspace, force_pdf_conversion=True)
+            if was_converted:
+                converted_pdf_path = tmp_pdf
+                target_input = str(tmp_pdf)
+        except Exception as exc:
+            progress.close()
+            parser.error(f"Error al preparar imagen de entrada: {exc}")
 
     # Validaciones específicas de --profile estadillo ANTES de instanciar agente u OCR
+    if parsed_args.verbose and not parsed_args.quiet:
+        print(f"Diagnóstico: perfil={parsed_args.profile}, OCR={parsed_args.ocr_mode}, entrada={target_input}")
+        print(f"Modelos: visión={vision_model or '(sin configurar)'}, texto={text_model or '(sin configurar)'}")
+
     if parsed_args.profile == "estadillo":
         if parsed_args.raw:
+            progress.close()
             parser.error("--raw no es compatible con --profile estadillo")
         if parsed_args.ask_vision:
+            progress.close()
             parser.error("--ask-vision no es compatible con --profile estadillo")
         if parsed_args.chunk_size > 0:
+            progress.close()
             parser.error("--chunk-size no es compatible con --profile estadillo")
         if parsed_args.export_md:
+            progress.close()
             parser.error(
                 "--export-md no es compatible con --profile estadillo; "
                 "la salida canónica se persiste automáticamente en <output>/<fecha>/notas.md y datos.csv"
             )
         if parsed_args.export_pdf:
+            progress.close()
             parser.error("--export-pdf no es compatible con --profile estadillo")
         if not vision_model:
+            progress.close()
             parser.error(
                 "Para usar --profile estadillo debe especificarse un modelo de visión mediante "
                 "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
@@ -182,9 +367,9 @@ def main(args=None):
             worker_timeout=parsed_args.worker_timeout,
         )
         if not parsed_args.keep_intermediate:
-            import atexit
+            resources.callback(agent.cleanup)
 
-            atexit.register(agent.cleanup)
+        resources.callback(agent.unload_ocr if parsed_args.keep_models_loaded else agent.unload_all)
 
         custom_prompt = (
             instruction
@@ -198,11 +383,12 @@ def main(args=None):
             4096 if parsed_args.max_tokens == 2048 else parsed_args.max_tokens
         )
         final_result, doc_result = agent.process_estadillo(
-            file_path=parsed_args.file_path,
+            file_path=target_input,
             output_dir=parsed_args.output,
             prompt=custom_prompt,
             max_tokens=effective_max_tokens,
             reasoning_effort=parsed_args.reasoning_effort,
+            progress=progress,
         )
 
         total_rows = sum(len(p.rows) for p in doc_result.pages)
@@ -211,7 +397,7 @@ def main(args=None):
         # Contar elementos que requieren revisión desde review/issues.json
         review_issues_path = (
             Path(parsed_args.output or "./output_ocr")
-            / safe_document_stem(parsed_args.file_path)
+            / safe_document_stem(target_input)
             / "review"
             / "issues.json"
         )
@@ -233,27 +419,37 @@ def main(args=None):
         print("\nRESPUESTA DEL AGENTE:")
         print(final_result)
 
+        if not parsed_args.quiet:
+            print(f"\nTiempo de ejecución: {progress.format_elapsed()}")
+
         if parsed_args.keep_intermediate:
             print(f"Archivos intermedios conservados en: {agent.output_dir}")
 
+        progress.close()
         return
 
     # Validaciones de los perfiles notebook y cuaderno_campo antes de iniciar OCR
     if parsed_args.profile in ("notebook", "cuaderno_campo"):
         if parsed_args.raw:
+            progress.close()
             parser.error(f"--raw no es compatible con --profile {parsed_args.profile}")
         if parsed_args.ask_vision:
+            progress.close()
             parser.error(f"--ask-vision no es compatible con --profile {parsed_args.profile}")
         if parsed_args.chunk_size > 0:
+            progress.close()
             parser.error(f"--chunk-size no es compatible con --profile {parsed_args.profile}")
         if parsed_args.export_md:
+            progress.close()
             parser.error(
                 f"--export-md no es compatible con --profile {parsed_args.profile}; "
                 "la salida Markdown canónica se persiste automáticamente dentro de <output>/<documento>/"
             )
         if parsed_args.export_pdf:
+            progress.close()
             parser.error(f"--export-pdf no es compatible con --profile {parsed_args.profile}")
         if not vision_model:
+            progress.close()
             parser.error(
                 f"Para usar --profile {parsed_args.profile} debe especificarse un modelo de visión mediante "
                 "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
@@ -264,7 +460,22 @@ def main(args=None):
             try:
                 notebook_config = NotebookConfig.from_file(parsed_args.config)
             except Exception as cfg_exc:
+                progress.close()
                 parser.error(f"Error al cargar --config '{parsed_args.config}': {cfg_exc}")
+
+        if parsed_args.no_diagrams or parsed_diagram_pages is not None:
+            if notebook_config is None:
+                notebook_config = NotebookConfig(
+                    extract_diagrams=not parsed_args.no_diagrams,
+                    diagram_pages=parsed_diagram_pages,
+                )
+            else:
+                updates = {}
+                if parsed_args.no_diagrams:
+                    updates["extract_diagrams"] = False
+                if parsed_diagram_pages is not None:
+                    updates["diagram_pages"] = parsed_diagram_pages
+                notebook_config = notebook_config.model_copy(update=updates)
 
         agent = UnlimitedOCRAgent(
             vision_model=vision_model,
@@ -275,9 +486,9 @@ def main(args=None):
             worker_timeout=parsed_args.worker_timeout,
         )
         if not parsed_args.keep_intermediate:
-            import atexit
+            resources.callback(agent.cleanup)
 
-            atexit.register(agent.cleanup)
+        resources.callback(agent.unload_ocr if parsed_args.keep_models_loaded else agent.unload_all)
 
         custom_prompt = (
             instruction
@@ -290,13 +501,15 @@ def main(args=None):
         effective_max_tokens = (
             4096 if parsed_args.max_tokens == 2048 else parsed_args.max_tokens
         )
-        final_result, doc_result = (agent.process_cuaderno_campo if parsed_args.profile == "cuaderno_campo" else agent.process_notebook)(
-            file_path=parsed_args.file_path,
+        runner = agent.process_cuaderno_campo if parsed_args.profile == "cuaderno_campo" else agent.process_notebook
+        final_result, doc_result = runner(
+            file_path=target_input,
             output_dir=parsed_args.output,
             config=notebook_config,
             prompt=custom_prompt,
             max_tokens=effective_max_tokens,
             reasoning_effort=parsed_args.reasoning_effort,
+            progress=progress,
         )
 
         total_pages = len(doc_result.pages)
@@ -309,7 +522,7 @@ def main(args=None):
         # Contar elementos que requieren revisión desde review/issues.json
         review_issues_path = (
             Path(parsed_args.output or "./output_ocr")
-            / safe_document_stem(parsed_args.file_path)
+            / safe_document_stem(target_input)
             / "review"
             / "issues.json"
         )
@@ -341,13 +554,18 @@ def main(args=None):
         print("\nRESPUESTA DEL AGENTE:")
         print(final_result)
 
+        if not parsed_args.quiet:
+            print(f"\nTiempo de ejecución: {progress.format_elapsed()}")
+
         if parsed_args.keep_intermediate:
             print(f"Archivos intermedios conservados en: {agent.output_dir}")
 
+        progress.close()
         return
 
     # Modo default (retrocompatible)
     if parsed_args.ask_vision and not vision_model:
+        progress.close()
         parser.error(
             "Para usar --ask-vision debe especificarse un modelo de visión mediante "
             "--vision-model, la variable LM_STUDIO_VISION_MODEL, --lm-model o la variable LM_STUDIO_MODEL."
@@ -362,15 +580,17 @@ def main(args=None):
         worker_timeout=parsed_args.worker_timeout,
     )
     if not parsed_args.keep_intermediate:
-        import atexit
+        resources.callback(agent.cleanup)
 
-        atexit.register(agent.cleanup)
+    resources.callback(agent.unload_ocr if parsed_args.keep_models_loaded else agent.unload_all)
 
-    is_pdf = parsed_args.file_path.lower().endswith(".pdf")
+    is_pdf = target_input.lower().endswith(".pdf")
+    progress.set_phase(2, "Ingesta y rasterizado", "Extrayendo páginas..." if is_pdf else "Cargando imagen...")
+    progress.set_phase(3, "Inferencia OCR", "Ejecutando Unlimited-OCR...")
     if is_pdf:
-        raw_ocr_text = agent.extract_from_pdf(parsed_args.file_path)
+        raw_ocr_text = agent.extract_from_pdf(target_input)
     else:
-        raw_ocr_text = agent.extract_from_image(parsed_args.file_path)
+        raw_ocr_text = agent.extract_from_image(target_input)
 
     print("\n--- TEXTO EXTRAÍDO POR UNLIMITED-OCR (Vista previa) ---")
     print(raw_ocr_text[:500] + ("..." if len(raw_ocr_text) > 500 else ""))
@@ -378,11 +598,15 @@ def main(args=None):
 
     if parsed_args.raw:
         final_result = raw_ocr_text
+        progress.finish("OCR completado")
     elif parsed_args.ask_vision:
+        progress.set_phase(4, "Extracción VLM", "Consultando a LM Studio...")
         print("Consultando a LM Studio en modo multimodal (Visión + OCR)...")
         if is_pdf:
             page_results = []
-            for artifact in agent.page_artifacts:
+            total_arts = len(agent.page_artifacts)
+            for idx, artifact in enumerate(agent.page_artifacts):
+                progress.update_substep(f"Página {artifact.page_number}/{total_arts}")
                 page_text = agent.ask_page_vision(
                     artifact,
                     prompt=instruction,
@@ -393,13 +617,15 @@ def main(args=None):
             final_result = "\n\n".join(page_results)
         else:
             final_result = agent.ask_vision(
-                image_path=parsed_args.file_path,
+                image_path=target_input,
                 prompt=instruction,
                 ocr_context=raw_ocr_text,
                 reasoning_effort=parsed_args.reasoning_effort,
                 max_tokens=parsed_args.max_tokens,
             )
+        progress.finish("Análisis multimodal completado")
     elif parsed_args.chunk_size > 0 and len(raw_ocr_text) > parsed_args.chunk_size:
+        progress.set_phase(4, "Procesamiento LLM", "Resumiendo por fragmentos...")
         final_result = agent.ask_lmstudio_chunked(
             raw_ocr_text,
             instruction,
@@ -408,13 +634,16 @@ def main(args=None):
             reasoning_effort=parsed_args.reasoning_effort,
             max_tokens=parsed_args.max_tokens,
         )
+        progress.finish("Completado")
     else:
+        progress.set_phase(4, "Procesamiento LLM", "Consultando modelo...")
         final_result = agent.ask_lmstudio(
             raw_ocr_text,
             instruction,
             reasoning_effort=parsed_args.reasoning_effort,
             max_tokens=parsed_args.max_tokens,
         )
+        progress.finish("Completado")
 
     print("\nRESPUESTA DEL AGENTE:")
     print(final_result)
@@ -426,3 +655,5 @@ def main(args=None):
         agent.export_to_pdf(final_result, parsed_args.export_pdf)
     if parsed_args.keep_intermediate:
         print(f"Archivos intermedios conservados en: {agent.output_dir}")
+
+    progress.close()

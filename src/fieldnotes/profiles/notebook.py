@@ -111,9 +111,13 @@ class VisualInventoryDTO(BaseModel):
 
 
 VISUAL_INVENTORY_PROMPT = """Inspecciona exclusivamente la evidencia visual de esta página.
-Enumera TODOS los croquis, figuras, gráficos o diagramas de flujo visibles, en orden de lectura.
-Clasifica cada elemento como field_sketch, flowchart o gps_sketch y descríbelo brevemente.
-No confundas una tabla con una figura. No inventes elementos. Si no hay ninguno, devuelve items=[]."""
+Enumera ÚNICAMENTE croquis de campo reales (mapas de parcelas, dibujos del terreno), esquemas GPS o diagramas de flujo de procesos.
+REGLAS ESTRICTAS DE EXCLUSIÓN:
+- NUNCA clasifiques como croquis o diagrama fragmentos de texto normal encerrados en cajas, recuadros o marcos (por ejemplo: fechas enmarcadas como [09/06] OK, títulos enmarcados, tarjetas de notas o llamadas).
+- NUNCA clasifiques como diagrama una lista de tareas, notas con viñetas o texto con flechas simples indicativas.
+- No confundas una tabla ni bloques de texto con una figura.
+- No inventes elementos. Si no hay diagramas o croquis reales inequívocos, devuelve items=[].
+Clasifica cada elemento válido como field_sketch, flowchart o gps_sketch y descríbelo brevemente."""
 
 
 def build_notebook_page_prompt(
@@ -125,6 +129,12 @@ def build_notebook_page_prompt(
     base_prompt = NOTEBOOK_PROMPT_TEMPLATE.format(page_number=page_number)
 
     if config:
+        if not config.is_diagram_extraction_enabled(page_number):
+            base_prompt += (
+                "\n\nDIRECTIVA DE DIAGRAMAS: La extracción de diagramas/croquis está DESACTIVADA para esta página. "
+                "Devuelve siempre diagrams=[]. Transcribe todo el texto legible (incluyendo notas enmarcadas o en cajas) "
+                "en sections, notes o tables según corresponda, de forma limpia y ordenada.\n"
+            )
         guidance = config.get_prompt_guidance()
         if guidance:
             base_prompt += f"\n\nGUÍAS ESPECÍFICAS DE CONFIGURACIÓN:\n{guidance}\n"
@@ -171,8 +181,12 @@ class NotebookProfile:
 
     def normalize_page_dto(self, value: Any) -> NotebookPageDTO:
         if isinstance(value, NotebookPageDTO):
-            return value
-        return NotebookPageDTO(**value.model_dump(exclude={"schema_version"}), estadillo_rows=[], diagrams=[])
+            dto = value
+        else:
+            dto = NotebookPageDTO(**value.model_dump(exclude={"schema_version"}), estadillo_rows=[], diagrams=[])
+        if not self.config.is_diagram_extraction_enabled(dto.page_number):
+            dto = dto.model_copy(update={"diagrams": []})
+        return dto
 
     def enrich_page_dto(self, art: Any, page_dto: NotebookPageDTO, max_tokens: int, call_kwargs: dict[str, Any]) -> NotebookPageDTO:
         return page_dto
@@ -198,9 +212,21 @@ class NotebookProfile:
         9. Generación de ReviewIssues y crops visuales confinados en review/.
         10. Publicación atómica de staging a canonical_dir con rollback y preservación de backup ante error.
         """
+        progress = kwargs.get("progress")
+
         input_path = Path(file_path).resolve()
         if not input_path.exists():
             raise FileNotFoundError(f"Archivo de entrada no encontrado: {input_path}")
+
+        # Soporte para carpetas de imágenes: convertir a PDF primero
+        if input_path.is_dir():
+            from ..ingest.images import prepare_input_source
+            if progress:
+                progress.set_phase(1, "Preparando entrada", f"Convirtiendo carpeta '{input_path.name}' a PDF...")
+            work_dir = Path(self.agent.output_dir) if hasattr(self.agent, "output_dir") else None
+            input_path, _, _ = prepare_input_source(input_path, working_dir=work_dir)
+        elif progress:
+            progress.set_phase(1, "Preparando entrada", f"Documento: {input_path.name}")
 
         stem = safe_document_stem(input_path)
         canonical_dir = (self.output_base_dir / stem).resolve()
@@ -222,6 +248,10 @@ class NotebookProfile:
         try:
             # 1. Fase OCR (Worker aislado libera VRAM)
             is_pdf = input_path.suffix.lower() == ".pdf"
+            if progress:
+                progress.set_phase(2, "Ingesta y rasterizado", "Extrayendo páginas del PDF..." if is_pdf else "Cargando imagen...")
+            if progress:
+                progress.set_phase(3, "Inferencia OCR", "Ejecutando Unlimited-OCR en worker aislado...")
             if is_pdf:
                 self.agent.extract_from_pdf(str(input_path))
             else:
@@ -263,13 +293,19 @@ class NotebookProfile:
                     target_raw.write_text(art.raw_ocr, encoding="utf-8")
 
             # 2. Extracción secuencial estructurada compacta con VLM
+            if progress:
+                progress.set_phase(4, "Extracción VLM multimodal", f"0/{len(artifacts)} páginas analizadas")
+
             extracted_pages: list[NotebookPage] = []
             page_dtos: list[NotebookPageDTO] = []
 
-            for art in artifacts:
+            for idx, art in enumerate(artifacts):
+                if progress:
+                    progress.update_substep(f"Página {art.page_number}/{len(artifacts)}")
                 page_prompt = self.build_page_prompt(art.page_number, prompt)
 
                 call_kwargs = dict(kwargs)
+                call_kwargs.pop("progress", None)
                 call_kwargs.setdefault("reasoning_effort", "none")
 
                 user_extra_body = kwargs.get("extra_body")
@@ -340,6 +376,8 @@ class NotebookProfile:
                 extracted_pages.append(page_data)
 
             # 3. Fusión pura de páginas y reconciliación de cabecera
+            if progress:
+                progress.set_phase(5, "Fusión y normalización", "Reconciliando páginas y validando...")
             merged_doc = merge_notebook_pages(
                 pages=extracted_pages,
                 source_file=str(input_path),
@@ -353,6 +391,8 @@ class NotebookProfile:
             )
 
             # 5. Renderizado y persistencia de derivados gráficos de diagramas
+            if progress:
+                progress.set_phase(6, "Generación de entregables", f"Renderizando {self.document_filename} y derivados...")
             assets_map: dict[str, str] = {}
             for page in validated_doc.pages:
                 for idx, diag in enumerate(page.diagrams):
@@ -403,6 +443,8 @@ class NotebookProfile:
             write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
 
             # 9. Publicación atómica de staging a canonical_dir con respaldo y rollback seguro
+            if progress:
+                progress.set_phase(7, "Publicación canónica", f"Guardando en {canonical_dir.name}")
             if canonical_dir.exists():
                 backup_dir = (self.output_base_dir / f".backup_notebook_{stem}_{uuid.uuid4().hex}").resolve()
                 backup_dir.relative_to(self.output_base_dir)
@@ -436,6 +478,9 @@ class NotebookProfile:
             # Éxito: limpiar backup si existió
             if backup_dir and backup_dir.exists():
                 shutil.rmtree(str(backup_dir), ignore_errors=True)
+
+            if progress:
+                progress.finish("Completado exitosamente")
 
             return markdown_output, validated_doc
 
@@ -481,12 +526,22 @@ class CuadernoCampoProfile(NotebookProfile):
     page_schema = CuadernoTextPageDTO
 
     def build_page_prompt(self, page_number: int, prompt: Optional[str]) -> str:
-        return super().build_page_prompt(page_number, prompt) + (
+        base = super().build_page_prompt(page_number, prompt)
+        if not self.config.is_diagram_extraction_enabled(page_number):
+            return base + (
+                "\nMODO CUADERNO_CAMPO (TEXTO PURO): La extracción de diagramas está DESACTIVADA para esta página. "
+                "Transcribe de forma limpia, clara, completa y ordenada TODO el texto de la página (títulos, secciones, párrafos, notas, listas, tablas y texto en recuadros). "
+                "Devuelve estadillo_rows=[] y diagrams=[]."
+            )
+        return base + (
             "\nMODO CUADERNO_CAMPO: conserva texto y tablas generales, pero devuelve "
             "estadillo_rows=[] y diagrams=[]; las figuras se extraen en una fase VLM separada."
         )
 
     def enrich_page_dto(self, art: Any, page_dto: NotebookPageDTO, max_tokens: int, call_kwargs: dict[str, Any]) -> NotebookPageDTO:
+        if not self.config.is_diagram_extraction_enabled(art.page_number):
+            return page_dto.model_copy(update={"estadillo_rows": [], "diagrams": []})
+
         from ..diagrams.extraction import get_diagram_prompt
 
         inventory = self.agent.ask_page_vision_structured(

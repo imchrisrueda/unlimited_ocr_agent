@@ -127,6 +127,14 @@ class NotebookConfig(BaseModel):
         default=True,
         description="Generar y enlazar representaciones visuales de diagramas (SVG). Si es False, conserva la descripción textual accesible sin crear enlaces rotos.",
     )
+    extract_diagrams: bool = Field(
+        default=True,
+        description="Si es False, desactiva completamente la extracción e inventario de diagramas/croquis, enfocando el procesamiento en texto claro y ordenado.",
+    )
+    diagram_pages: Optional[list[int]] = Field(
+        default=None,
+        description="Páginas específicas (1-indexadas) donde se buscarán diagramas/croquis. Si es None y extract_diagrams=True, se buscan en todas las páginas.",
+    )
     species_normalization: bool = Field(
         default=True,
         description="Aplicar normalización no destructiva de especies (Ap->P, Ah->H, Ar->R, Mz->M) a filas tabulares",
@@ -139,6 +147,27 @@ class NotebookConfig(BaseModel):
     max_height_cm: float = 500.0
 
     model_config = ConfigDict(extra="forbid", strict=True)
+
+    def is_diagram_extraction_enabled(self, page_number: int) -> bool:
+        """Determina si la extracción de diagramas/croquis está habilitada para una página dada."""
+        if not self.extract_diagrams:
+            return False
+        if self.diagram_pages is not None:
+            return page_number in self.diagram_pages
+        return True
+
+    @field_validator("diagram_pages")
+    @classmethod
+    def validate_diagram_pages(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is None:
+            return None
+        clean = []
+        for p in v:
+            if not isinstance(p, int) or isinstance(p, bool) or p < 1:
+                raise ValueError(f"Los números de página en diagram_pages deben ser enteros >= 1, obtenido: {p!r}")
+            if p not in clean:
+                clean.append(p)
+        return sorted(clean)
 
     @field_validator("section_order")
     @classmethod

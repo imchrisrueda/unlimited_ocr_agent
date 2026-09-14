@@ -326,84 +326,92 @@ def run_worker_process(request_path: str, response_path: str) -> int:
         from .unlimited import UnlimitedOCR
         from ..artifacts import PageArtifact
 
-        ocr = UnlimitedOCR(model_name=model_name, output_dir=output_dir)
+        ocr = None
+        try:
+            ocr = UnlimitedOCR(model_name=model_name, output_dir=output_dir)
 
-        if mode == "image":
-            if not image_paths:
-                raise ValueError("No image path provided for mode='image'")
-            raw_text = ocr.extract_from_image(image_paths[0])
-            result_path = os.path.join(output_dir, "result.md")
-            if not os.path.isfile(result_path):
-                raise FileNotFoundError(f"result.md was not created at {result_path}")
-            raw_path = os.path.join(output_dir, "raw", "page_001.md")
-            resp_data = {
-                "version": 1,
-                "request_id": request_id,
-                "status": "success",
-                "result_path": result_path,
-                "mapping_status": "mapped",
-                "mapping_error": None,
-                "page_artifacts": [
-                    {
-                        "page_number": 1,
-                        "image_path": str(image_paths[0]),
-                        "raw_path": raw_path if os.path.isfile(raw_path) else None,
-                        "ocr_mapping_status": "mapped",
-                        "mapping_error": None,
-                    }
-                ],
-                "error_type": None,
-                "error_message": None,
-                "traceback": None,
-            }
-        elif mode == "pdf":
-            raw_text = ocr.extract_from_images(image_paths)
-            artifacts = [
-                PageArtifact(page_number=i, image_path=Path(p))
-                for i, p in enumerate(image_paths, start=1)
-            ]
-            processed = ocr.process_page_artifacts(artifacts, raw_text)
-            result_path = os.path.join(output_dir, "result.md")
-            if not os.path.isfile(result_path):
-                raise FileNotFoundError(f"result.md was not created at {result_path}")
+            if mode == "image":
+                if not image_paths:
+                    raise ValueError("No image path provided for mode='image'")
+                raw_text = ocr.extract_from_image(image_paths[0])
+                result_path = os.path.join(output_dir, "result.md")
+                if not os.path.isfile(result_path):
+                    raise FileNotFoundError(f"result.md was not created at {result_path}")
+                raw_path = os.path.join(output_dir, "raw", "page_001.md")
+                resp_data = {
+                    "version": 1,
+                    "request_id": request_id,
+                    "status": "success",
+                    "result_path": result_path,
+                    "mapping_status": "mapped",
+                    "mapping_error": None,
+                    "page_artifacts": [
+                        {
+                            "page_number": 1,
+                            "image_path": str(image_paths[0]),
+                            "raw_path": raw_path if os.path.isfile(raw_path) else None,
+                            "ocr_mapping_status": "mapped",
+                            "mapping_error": None,
+                        }
+                    ],
+                    "error_type": None,
+                    "error_message": None,
+                    "traceback": None,
+                }
+            elif mode == "pdf":
+                raw_text = ocr.extract_from_images(image_paths)
+                artifacts = [
+                    PageArtifact(page_number=i, image_path=Path(p))
+                    for i, p in enumerate(image_paths, start=1)
+                ]
+                processed = ocr.process_page_artifacts(artifacts, raw_text)
+                result_path = os.path.join(output_dir, "result.md")
+                if not os.path.isfile(result_path):
+                    raise FileNotFoundError(f"result.md was not created at {result_path}")
 
-            mapping_status = (
-                "mapped"
-                if all(a.ocr_mapping_status == "mapped" for a in processed)
-                else "unaligned"
-            )
-            mapping_error = next(
-                (a.mapping_error for a in processed if a.mapping_error is not None), None
-            )
-            page_artifacts_data = []
-            for a in processed:
-                raw_file_p = os.path.join(output_dir, "raw", f"page_{a.page_number:03d}.md")
-                has_raw_file = (
-                    os.path.isfile(raw_file_p) and a.ocr_mapping_status == "mapped"
+                mapping_status = (
+                    "mapped"
+                    if all(a.ocr_mapping_status == "mapped" for a in processed)
+                    else "unaligned"
                 )
-                page_artifacts_data.append(
-                    {
-                        "page_number": a.page_number,
-                        "image_path": str(a.image_path),
-                        "raw_path": raw_file_p if has_raw_file else None,
-                        "ocr_mapping_status": a.ocr_mapping_status,
-                        "mapping_error": a.mapping_error,
-                    }
+                mapping_error = next(
+                    (a.mapping_error for a in processed if a.mapping_error is not None), None
                 )
-            resp_data = {
-                "version": 1,
-                "request_id": request_id,
-                "status": "success",
-                "result_path": result_path,
-                "mapping_status": mapping_status,
-                "mapping_error": mapping_error,
-                "page_artifacts": page_artifacts_data,
-                "error_type": None,
-                "error_message": None,
-                "traceback": None,
-            }
-        else:
-            raise ValueError(f"Unsupported mode: {mode}")
+                page_artifacts_data = []
+                for a in processed:
+                    raw_file_p = os.path.join(output_dir, "raw", f"page_{a.page_number:03d}.md")
+                    has_raw_file = (
+                        os.path.isfile(raw_file_p) and a.ocr_mapping_status == "mapped"
+                    )
+                    page_artifacts_data.append(
+                        {
+                            "page_number": a.page_number,
+                            "image_path": str(a.image_path),
+                            "raw_path": raw_file_p if has_raw_file else None,
+                            "ocr_mapping_status": a.ocr_mapping_status,
+                            "mapping_error": a.mapping_error,
+                        }
+                    )
+                resp_data = {
+                    "version": 1,
+                    "request_id": request_id,
+                    "status": "success",
+                    "result_path": result_path,
+                    "mapping_status": mapping_status,
+                    "mapping_error": mapping_error,
+                    "page_artifacts": page_artifacts_data,
+                    "error_type": None,
+                    "error_message": None,
+                    "traceback": None,
+                }
+            else:
+                raise ValueError(f"Unsupported mode: {mode}")
+        finally:
+            if ocr is not None:
+                try:
+                    ocr.unload()
+                except Exception:
+                    pass
 
         write_atomic_json(response_path, resp_data)
         return 0
@@ -492,6 +500,7 @@ def run_ocr_worker(
     src_dir = str(Path(__file__).resolve().parents[2])
 
     env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     pythonpath_entries = [repo_root, src_dir]
     existing_pythonpath = env.get("PYTHONPATH")
     if existing_pythonpath:
@@ -563,6 +572,12 @@ def run_ocr_worker(
             except Exception:
                 pass
 
+        if proc.returncode in (3221225477, -1073741819):
+            err_msg = (
+                f"{err_msg} (STATUS_ACCESS_VIOLATION 0xC0000005: Causado típicamente por "
+                "saturación de memoria VRAM de la GPU por modelos en LM Studio u otros procesos)."
+            )
+
         if not traceback_str and stderr_content:
             err_msg = f"{err_msg}\nDetalles (stderr):\n{stderr_content}"
 
@@ -612,6 +627,7 @@ def run_ocr_worker(
 
 
 def main():
+    setup_encoding()
     import argparse
     parser = argparse.ArgumentParser(description="Unlimited-OCR isolated subprocess worker")
     parser.add_argument("--request", required=True, help="Ruta al archivo JSON de petición")

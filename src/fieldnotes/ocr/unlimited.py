@@ -133,25 +133,66 @@ class UnlimitedOCR:
 
         # Detección y selección automática de hardware (GPU vs CPU)
         if torch.cuda.is_available():
-            self.device = "cuda"
-            self.dtype = torch.bfloat16
-            gpu_name = torch.cuda.get_device_name(0)
-            print(f"GPU activada: {gpu_name} (aceleración CUDA activada)")
+            try:
+                free_bytes, total_bytes = torch.cuda.mem_get_info()
+                free_mb = free_bytes / (1024 * 1024)
+            except Exception:
+                free_mb = 4000
+
+            if free_mb < 2500:
+                print(f"Aviso: Memoria VRAM libre baja ({free_mb:.0f} MiB). Liberando caché CUDA...")
+                torch.cuda.empty_cache()
+                try:
+                    free_bytes, _ = torch.cuda.mem_get_info()
+                    free_mb = free_bytes / (1024 * 1024)
+                except Exception:
+                    pass
+
+            if free_mb >= 2000:
+                self.device = "cuda"
+                self.dtype = torch.bfloat16
+                gpu_name = torch.cuda.get_device_name(0)
+                print(f"GPU activada: {gpu_name} (aceleración CUDA activada, {free_mb:.0f} MiB VRAM libre)")
+            else:
+                self.device = "cpu"
+                self.dtype = torch.float32
+                print(
+                    f"VRAM libre insuficiente ({free_mb:.0f} MiB < 2000 MiB requeridos). "
+                    "Ejecutando Unlimited-OCR en modo CPU para prevenir caídas de memoria..."
+                )
         else:
             self.device = "cpu"
             self.dtype = torch.float32
             print("GPU no detectada en PyTorch. Ejecutando en modo CPU...")
 
-        self.model = (
-            AutoModel.from_pretrained(
-                self.model_name,
-                trust_remote_code=True,
-                use_safetensors=True,
-                torch_dtype=self.dtype,
+        try:
+            self.model = (
+                AutoModel.from_pretrained(
+                    self.model_name,
+                    trust_remote_code=True,
+                    use_safetensors=True,
+                    torch_dtype=self.dtype,
+                )
+                .eval()
+                .to(self.device)
             )
-            .eval()
-            .to(self.device)
-        )
+        except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+            if self.device == "cuda":
+                print(f"Aviso: Fallo al asignar modelo en GPU ({exc}). Reintentando en modo CPU...")
+                self.device = "cpu"
+                self.dtype = torch.float32
+                self.model = (
+                    AutoModel.from_pretrained(
+                        self.model_name,
+                        trust_remote_code=True,
+                        use_safetensors=True,
+                        torch_dtype=self.dtype,
+                    )
+                    .eval()
+                    .to(self.device)
+                )
+            else:
+                raise
 
     def extract_from_image(self, image_path: str) -> str:
         """Extrae el contenido de una imagen usando Unlimited-OCR."""
@@ -168,9 +209,9 @@ class UnlimitedOCR:
                     base_size=1024,
                     image_size=640,
                     crop_mode=True,
-                    max_length=32768,
-                    no_repeat_ngram_size=35,
-                    ngram_window=128,
+                    max_length=2048,
+                    no_repeat_ngram_size=15,
+                    ngram_window=0,
                     save_results=True,
                 )
         except torch.cuda.OutOfMemoryError:
@@ -184,16 +225,16 @@ class UnlimitedOCR:
                     base_size=512,
                     image_size=384,
                     crop_mode=False,
-                    max_length=32768,
-                    no_repeat_ngram_size=35,
-                    ngram_window=128,
+                    max_length=2048,
+                    no_repeat_ngram_size=15,
+                    ngram_window=0,
                     save_results=True,
                 )
 
         result_file = os.path.join(self.output_dir, "result.md")
         raw_text = ""
         if os.path.exists(result_file):
-            with open(result_file, "r", encoding="utf-8") as f:
+            with open(result_file, "r", encoding="utf-8", newline="") as f:
                 raw_text = f.read()
 
         raw_dir = os.path.join(self.output_dir, "raw")
@@ -206,25 +247,86 @@ class UnlimitedOCR:
         return raw_text
 
     def extract_from_images(self, image_paths: list[str]) -> str:
-        """Extrae el contenido de múltiples imágenes (ej. páginas de PDF) usando Unlimited-OCR."""
-        print(f"Procesando {len(image_paths)} páginas con infer_multi...")
-        self.model.infer_multi(
-            self.tokenizer,
-            prompt="<image>Multi page parsing.",
-            image_files=image_paths,
-            output_path=self.output_dir,
-            image_size=1024,
-            max_length=32768,
-            no_repeat_ngram_size=35,
-            ngram_window=1024,
-            save_results=True,
-        )
+        """Extrae el contenido de múltiples imágenes (ej. páginas de PDF) procesando cada página secuencialmente de forma optimizada."""
+        import torch
+
+        if not image_paths:
+            return ""
+
+        print(f"Procesando {len(image_paths)} páginas secuencialmente con Unlimited-OCR...")
+        page_texts = []
+        global_images_dir = os.path.join(self.output_dir, "images")
+        os.makedirs(global_images_dir, exist_ok=True)
+
+        for idx, image_path in enumerate(image_paths, start=1):
+            print(f"[{idx}/{len(image_paths)}] Procesando página: {image_path}")
+            page_work_dir = os.path.join(self.output_dir, f"_page_work_{idx}")
+            os.makedirs(page_work_dir, exist_ok=True)
+
+            try:
+                with torch.inference_mode():
+                    self.model.infer(
+                        self.tokenizer,
+                        prompt="<image>document parsing.",
+                        image_file=image_path,
+                        output_path=page_work_dir,
+                        base_size=1024,
+                        image_size=640,
+                        crop_mode=True,
+                        max_length=2048,
+                        no_repeat_ngram_size=15,
+                        ngram_window=0,
+                        save_results=True,
+                    )
+            except torch.cuda.OutOfMemoryError:
+                print(f"Memoria VRAM agotada en GPU para página {idx}. Reintentando con configuración ligera...")
+                with torch.inference_mode():
+                    self.model.infer(
+                        self.tokenizer,
+                        prompt="<image>document parsing.",
+                        image_file=image_path,
+                        output_path=page_work_dir,
+                        base_size=512,
+                        image_size=384,
+                        crop_mode=False,
+                        max_length=2048,
+                        no_repeat_ngram_size=15,
+                        ngram_window=0,
+                        save_results=True,
+                    )
+
+            page_result_file = os.path.join(page_work_dir, "result.md")
+            p_text = ""
+            if os.path.exists(page_result_file):
+                with open(page_result_file, "r", encoding="utf-8", newline="") as f:
+                    p_text = f.read()
+
+            # Copiar y renombrar imágenes de recorte para evitar colisiones entre páginas
+            page_img_dir = os.path.join(page_work_dir, "images")
+            if os.path.isdir(page_img_dir):
+                for img_name in os.listdir(page_img_dir):
+                    src_img = os.path.join(page_img_dir, img_name)
+                    if os.path.isfile(src_img):
+                        dest_name = f"page_{idx}_{img_name}"
+                        dest_path = os.path.join(global_images_dir, dest_name)
+                        shutil.copy2(src_img, dest_path)
+                        p_text = p_text.replace(f"images/{img_name}", f"images/{dest_name}")
+
+            shutil.rmtree(page_work_dir, ignore_errors=True)
+            page_texts.append(p_text)
+
+        # Construir bloques de páginas delimitados con <PAGE>
+        page_blocks = []
+        for p_text in page_texts:
+            p_clean = p_text
+            page_blocks.append(p_clean)
+        combined_text = "".join(f"<PAGE>{block}" for block in page_blocks)
 
         result_file = os.path.join(self.output_dir, "result.md")
-        if os.path.exists(result_file):
-            with open(result_file, "r", encoding="utf-8") as f:
-                return f.read()
-        return ""
+        with open(result_file, "w", encoding="utf-8", newline="") as f:
+            f.write(combined_text)
+
+        return combined_text
 
     def process_page_artifacts(
         self,
@@ -235,3 +337,31 @@ class UnlimitedOCR:
         """Procesa y asigna los artefactos de página a partir del texto extraído."""
         result_src = source_result_path or os.path.join(self.output_dir, "result.md")
         return process_page_artifacts(artifacts, raw_text, self.output_dir, result_src)
+
+    def unload(self) -> None:
+        """Descarga explícitamente el modelo y tokenizer de RAM y GPU VRAM."""
+        import gc
+
+        if hasattr(self, "model") and self.model is not None:
+            try:
+                del self.model
+            except Exception:
+                pass
+            self.model = None
+
+        if hasattr(self, "tokenizer") and self.tokenizer is not None:
+            try:
+                del self.tokenizer
+            except Exception:
+                pass
+            self.tokenizer = None
+
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+        except Exception:
+            pass

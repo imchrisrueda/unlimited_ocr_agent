@@ -183,9 +183,21 @@ class EstadilloProfile:
         9. Generación de ReviewIssues y crops visuales confinados en review/.
         10. Publicación atómica del directorio de staging a la ruta canónica con rollback.
         """
+        progress = kwargs.get("progress")
+
         input_path = Path(file_path).resolve()
         if not input_path.exists():
             raise FileNotFoundError(f"Archivo de entrada no encontrado: {input_path}")
+
+        # Soporte para carpetas de imágenes: convertir a PDF primero
+        if input_path.is_dir():
+            from ..ingest.images import prepare_input_source
+            if progress:
+                progress.set_phase(1, "Preparando entrada", f"Convirtiendo carpeta '{input_path.name}' a PDF...")
+            work_dir = Path(self.agent.output_dir) if hasattr(self.agent, "output_dir") else None
+            input_path, _, _ = prepare_input_source(input_path, working_dir=work_dir)
+        elif progress:
+            progress.set_phase(1, "Preparando entrada", f"Documento: {input_path.name}")
 
         stem = safe_document_stem(input_path)
         canonical_dir = (self.output_base_dir / stem).resolve()
@@ -207,6 +219,10 @@ class EstadilloProfile:
         try:
             # 1. OCR Phase (Worker ejecuta en subproceso y libera VRAM)
             is_pdf = input_path.suffix.lower() == ".pdf"
+            if progress:
+                progress.set_phase(2, "Ingesta y rasterizado", "Extrayendo páginas del PDF..." if is_pdf else "Cargando imagen...")
+            if progress:
+                progress.set_phase(3, "Inferencia OCR", "Ejecutando Unlimited-OCR en worker aislado...")
             if is_pdf:
                 self.agent.extract_from_pdf(str(input_path))
             else:
@@ -249,13 +265,19 @@ class EstadilloProfile:
                     target_raw.write_text(art.raw_ocr, encoding="utf-8")
 
             # 2. Sequential Compact VLM Extraction & Pure Canonical Conversion
+            if progress:
+                progress.set_phase(4, "Extracción VLM multimodal", f"0/{len(artifacts)} páginas")
+
             extracted_pages: list[EstadilloPage] = []
             page_dtos: list[EstadilloPageDTO] = []
 
-            for art in artifacts:
+            for idx, art in enumerate(artifacts):
+                if progress:
+                    progress.update_substep(f"Página {art.page_number}/{len(artifacts)}")
                 page_prompt = build_estadillo_page_prompt(art.page_number, prompt)
 
                 call_kwargs = dict(kwargs)
+                call_kwargs.pop("progress", None)
                 call_kwargs.setdefault("reasoning_effort", "none")
 
                 # Combinación segura de extra_body con defaults de thinking deshabilitado sin mutar el dict original del usuario
@@ -286,6 +308,8 @@ class EstadilloProfile:
                 extracted_pages.append(page_data)
 
             # 3. Pure Merge & Header Reconciliation
+            if progress:
+                progress.set_phase(5, "Fusión y normalización", "Normalizando especies y validando...")
             merged_doc = merge_estadillo_pages(extracted_pages, source_file=str(input_path))
 
             # 4. Pure Species Normalization
@@ -324,10 +348,12 @@ class EstadilloProfile:
                     f"Ruta canónica '{canonical_dir}' escapa del directorio base '{self.output_base_dir}'"
                 ) from exc
 
+            # 7. Generación de ReviewIssues y Crops visuales confinados
+            if progress:
+                progress.set_phase(6, "Generación de entregables", "Generando notas.md, datos.csv y revisión...")
             notes_output = render_estadillo_notes(validated_doc)
             csv_output = render_estadillo_csv(validated_doc)
 
-            # 7. Generación de ReviewIssues y Crops visuales confinados
             review_issues = extract_review_issues_from_document(validated_doc)
             invalid_region_issues = extract_invalid_region_issues(page_dtos)
             if invalid_region_issues:
@@ -363,6 +389,8 @@ class EstadilloProfile:
             )
 
             # 9. Publicación atómica de staging a canonical_dir con rollback
+            if progress:
+                progress.set_phase(7, "Publicación canónica", f"Guardando en {session_name}")
             if canonical_dir.exists():
                 backup_dir = (self.output_base_dir / f".backup_{stem}_{uuid.uuid4().hex}").resolve()
                 shutil.move(str(canonical_dir), str(backup_dir))
@@ -376,6 +404,9 @@ class EstadilloProfile:
                 if backup_dir and backup_dir.exists() and not canonical_dir.exists():
                     shutil.move(str(backup_dir), str(canonical_dir))
                 raise
+
+            if progress:
+                progress.finish("Completado exitosamente")
 
             return notes_output, validated_doc
 

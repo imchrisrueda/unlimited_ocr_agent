@@ -12,3 +12,4 @@ matplotlib
 psutil
 requests
 openpyxl>=3.1,<4
+tqdm>=4.66.0

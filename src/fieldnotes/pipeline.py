@@ -141,10 +141,52 @@ class UnlimitedOCRAgent:
     def llm_client(self, value):
         self.vlm.client = value
 
+    def unload_ocr(self) -> None:
+        """Libera de forma completa e inmediata el modelo OCR de RAM y VRAM."""
+        if self.ocr is not None:
+            if hasattr(self.ocr, "unload"):
+                try:
+                    self.ocr.unload()
+                except Exception:
+                    pass
+            self.ocr = None
+
+        import gc
+        gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
+        except Exception:
+            pass
+
+    def unload_vlm(self, models: Optional[list[str]] = None) -> list[str]:
+        """Descarga los modelos VLM de LM Studio para liberar memoria GPU/RAM."""
+        if self.vlm is None:
+            return []
+        if models:
+            unloaded = []
+            for m in models:
+                if self.vlm.unload_model(m):
+                    unloaded.append(m)
+            return unloaded
+        return self.vlm.unload_used_models()
+
+    def unload_all(self, include_vlm: bool = True) -> dict[str, Any]:
+        """Libera todos los recursos de memoria y GPU asociados a OCR y VLM."""
+        self.unload_ocr()
+        unloaded_vlm: list[str] = []
+        if include_vlm and self.vlm:
+            unloaded_vlm = self.vlm.unload_used_models()
+        return {"ocr_unloaded": True, "vlm_unloaded": unloaded_vlm}
+
     def cleanup(self) -> None:
-        """Elimina los archivos intermedios generados durante esta ejecución."""
+        """Elimina los archivos intermedios generados durante esta ejecución y descarga modelos."""
+        self.unload_ocr()
         if os.path.isdir(self.output_dir):
-            shutil.rmtree(self.output_dir)
+            shutil.rmtree(self.output_dir, ignore_errors=True)
 
     def extract_from_image(self, image_path: str) -> str:
         """Extrae el contenido de una imagen usando Unlimited-OCR."""
@@ -298,11 +340,13 @@ class UnlimitedOCRAgent:
         **kwargs: Any,
     ) -> str:
         """Envía la imagen de un PageArtifact y su OCR de apoyo correspondiente a LM Studio."""
+        call_kwargs = dict(kwargs)
+        call_kwargs.pop("progress", None)
         return self.vlm.ask_vision(
             image_path=page_artifact.image_path,
             prompt=prompt,
             ocr_context=page_artifact.raw_ocr,
-            **kwargs,
+            **call_kwargs,
         )
 
     def ask_page_vision_structured(
@@ -313,12 +357,14 @@ class UnlimitedOCRAgent:
         **kwargs: Any,
     ) -> T:
         """Envía la imagen y OCR de apoyo de un PageArtifact retornando una instancia tipada."""
+        call_kwargs = dict(kwargs)
+        call_kwargs.pop("progress", None)
         return self.vlm.ask_vision_structured(
             image_path=page_artifact.image_path,
             prompt=prompt,
             schema=schema,
             ocr_context=page_artifact.raw_ocr,
-            **kwargs,
+            **call_kwargs,
         )
 
     def export_to_markdown(self, text: str, output_path: str) -> str:
@@ -336,6 +382,7 @@ class UnlimitedOCRAgent:
         prompt: Optional[str] = None,
         vision_model: Optional[str] = None,
         max_tokens: int = 4096,
+        progress: Optional[Any] = None,
         **kwargs: Any,
     ):
         """Procesa un archivo PDF o imagen bajo el perfil de dominio 'estadillo'.
@@ -349,7 +396,7 @@ class UnlimitedOCRAgent:
             output_base_dir=output_dir,
             vision_model=vision_model,
         )
-        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, progress=progress, **kwargs)
 
     def process_notebook(
         self,
@@ -359,6 +406,9 @@ class UnlimitedOCRAgent:
         config: Optional[Any] = None,
         prompt: Optional[str] = None,
         max_tokens: int = 4096,
+        progress: Optional[Any] = None,
+        no_diagrams: bool = False,
+        diagram_pages: Optional[list[int]] = None,
         **kwargs: Any,
     ):
         """Procesa un archivo PDF o imagen bajo el perfil general 'notebook'.
@@ -367,19 +417,55 @@ class UnlimitedOCRAgent:
         canónico en <output_dir>/<stem>/.
         """
         from .profiles.notebook import NotebookProfile
+        from .schemas.notebook import NotebookConfig
+
+        if config is None:
+            config = NotebookConfig()
+        elif isinstance(config, dict):
+            config = NotebookConfig(**config)
+
+        if no_diagrams:
+            config = config.model_copy(update={"extract_diagrams": False})
+        if diagram_pages is not None:
+            config = config.model_copy(update={"diagram_pages": diagram_pages})
+
         profile = NotebookProfile(
             agent=self,
             output_base_dir=output_dir,
             vision_model=vision_model,
             config=config,
         )
-        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, progress=progress, **kwargs)
 
-    def process_cuaderno_campo(self, file_path: str | Path, output_dir: Optional[str | Path] = None, vision_model: Optional[str] = None, config: Optional[Any] = None, prompt: Optional[str] = None, max_tokens: int = 4096, **kwargs: Any):
+    def process_cuaderno_campo(
+        self,
+        file_path: str | Path,
+        output_dir: Optional[str | Path] = None,
+        vision_model: Optional[str] = None,
+        config: Optional[Any] = None,
+        prompt: Optional[str] = None,
+        max_tokens: int = 4096,
+        progress: Optional[Any] = None,
+        no_diagrams: bool = False,
+        diagram_pages: Optional[list[int]] = None,
+        **kwargs: Any,
+    ):
         """Procesa un cuaderno visual secuencial sin tablas de estadillo."""
         from .profiles.notebook import CuadernoCampoProfile
+        from .schemas.notebook import NotebookConfig
+
+        if config is None:
+            config = NotebookConfig()
+        elif isinstance(config, dict):
+            config = NotebookConfig(**config)
+
+        if no_diagrams:
+            config = config.model_copy(update={"extract_diagrams": False})
+        if diagram_pages is not None:
+            config = config.model_copy(update={"diagram_pages": diagram_pages})
+
         profile = CuadernoCampoProfile(agent=self, output_base_dir=output_dir, vision_model=vision_model, config=config)
-        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, **kwargs)
+        return profile.run(file_path=file_path, prompt=prompt, max_tokens=max_tokens, progress=progress, **kwargs)
 
     def process_diagram(
         self,

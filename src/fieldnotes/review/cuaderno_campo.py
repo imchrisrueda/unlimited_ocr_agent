@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 PAGE_HEADING = re.compile(r"(?m)^## Página ([1-9]\d*)\s*$")
 SUBHEADING = re.compile(r"(?m)^### (.+?)\s*$")
 SPATIAL_INTERPRETATION = re.compile(
-    r"(?ms)^#### Interpretación espacial(?: revisada| propuesta por el VLM)?\s*$\n(.*?)(?=^#### |\Z)"
+    r"(?ms)^#### Interpretación espacial(?: revisada| propuesta por el VLM)?\s*$\n(.*?)(?=^#{1,4} |\Z)"
 )
 PAGE_IMAGE = re.compile(r"!\[Página ([1-9]\d*)\]\(\.\./pages/page_([0-9]{3})\.(?:png|jpe?g|webp|tiff?)\)", re.IGNORECASE)
 

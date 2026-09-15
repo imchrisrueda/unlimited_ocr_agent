@@ -52,6 +52,7 @@ class TestCuadernoReview(unittest.TestCase):
             self.assertEqual(published["reviewer"], "revisor")
             self.assertEqual(published["pages"][0]["sections"][0]["title"], "Actuaciones")
             self.assertIn("Ensayo dentro de Buffer", published["pages"][0]["spatial_interpretation"])
+            self.assertNotIn("Imagen original", published["pages"][0]["spatial_interpretation"])
             self.assertEqual(published["reviewed_markdown_sha256"], document.reviewed_markdown_sha256)
             manifest = json.loads((session / "review" / "revision.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "approved")

@@ -34,8 +34,11 @@ Aplicación CLI local que transforma PDF o imágenes de notas de campo en artefa
 | `default` | OCR, consulta o exportación general | respuesta, Markdown o PDF solicitado |
 | `estadillo` | jornadas tabulares de campo | `<fecha>/notas.md`, `datos.csv` y `review/datos_<sesión>.xlsx` |
 | `notebook` | cuadernos heterogéneos | `<stem>/notebook.md` |
+| `cuaderno_campo` | notas narrativas y visuales ordenadas por página | `<stem>/cuaderno_campo.md`, después `<stem>/reviewed/` |
 
 El perfil estadillo publica además `document.json`, `pages/`, `raw/`, `assets/` y `review/`. El comando `publish_estadillo_excel.py` localiza `review/datos_<sesión>.xlsx` y sincroniza sus correcciones con todas las representaciones derivadas de las filas: `datos.csv` y `document.json`, conservando el orden y la procedencia por página. Si la fecha no es inequívoca, usa un nombre seguro derivado del archivo tanto para la carpeta como para el libro y crea una incidencia; nunca inventa la fecha.
+
+El perfil `cuaderno_campo` conserva la extracción automática en la raíz. Para cada figura detectada, el VLM genera SVG o Mermaid y una reconstrucción espacial monoespaciada propuesta. La persona corrige `review/transcripcion.md`; la publicación valida páginas, enlaces e incidencias y genera atómicamente `reviewed/notas.md` y un índice JSON derivado del mismo texto. Los consumidores deben preferir `reviewed/` y utilizar las imágenes originales como evidencia visual.
 
 ## Interfaces
 

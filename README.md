@@ -180,11 +180,19 @@ Es una respuesta interpretativa; no la uses como entrega canónica ni para compl
 
 El perfil `notebook` mantiene su salida `notebook.md` para documentos mixtos; no sustituye el contrato específico de estadillo.
 
-Para cuadernos visuales usa `--profile cuaderno_campo`: genera `cuaderno_campo.md` en orden de página, sin tablas de estadillo. Cada figura se reconstruye con el VLM; los flujos se incluyen como Mermaid y después se inserta la imagen original.
+Para cuadernos visuales usa `--profile cuaderno_campo`: genera `cuaderno_campo.md` en orden de página, sin tablas de estadillo. Cada figura se reconstruye con el VLM; los flujos se incluyen como Mermaid, los croquis como SVG y ambos incluyen una reconstrucción textual propuesta para corregir en `review/transcripcion.md` antes de publicar. Después se inserta la imagen original.
 
 ```powershell
 .\.venv\Scripts\python.exe agent.py documento.pdf --profile cuaderno_campo --vision-model "identificador-del-qwen-multimodal" --output output_ocr
 ```
+
+La ejecución crea `review/transcripcion.md` para corrección humana y, si existen incidencias, `review/resolutions.json`. Tras revisar todas las páginas, publica un par Markdown/JSON sincronizado:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\publish_cuaderno_review.py output_ocr\documento --reviewer "nombre-o-identificador"
+```
+
+Los modelos posteriores deben consultar `reviewed/notas.md` y `reviewed/document.json`. Si `reviewed/` no existe, la sesión sigue siendo una extracción automática no aprobada. Consulta [la guía para Qwen](docs/QWEN_ANALYSIS_GUIDE.md) para la jerarquía de evidencia y el prompt recomendado.
 
 La extracción textual y la extracción de figuras se ejecutan en pasadas VLM separadas. Si una referencia visual es inválida, se descarta y queda advertida; nunca se crea una entidad para repararla.
 
@@ -211,7 +219,7 @@ flowchart TD
     K --> L{Perfil}
     L -->|Estadillo| M[fecha/notas.md + datos.csv]
     L -->|Notebook| N[notebook.md + evidencias]
-    L -->|Cuaderno campo| R[cuaderno_campo.md + original + Mermaid o SVG]
+    L -->|Cuaderno campo| R[cuaderno_campo.md + original + Mermaid/SVG + propuesta textual]
     L -->|Default| O[Respuesta o exportación]
     M --> P[Revisión de issues y evidencia]
 ```

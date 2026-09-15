@@ -2,6 +2,32 @@
 
 Esta guía define cómo pedir a un Qwen local que interprete una o varias sesiones ya digitalizadas. No forma parte de la extracción visual y no autoriza a modificar los datos.
 
+## Cuadernos de campo con revisión humana
+
+En una sesión `cuaderno_campo`, la jerarquía de autoridad es:
+
+1. `reviewed/notas.md` y `reviewed/document.json`: revisión humana publicada.
+2. `pages/page_NNN.*`: evidencia visual primaria para verificaciones puntuales.
+3. `cuaderno_campo.md`, `document.json`, `raw/` y `assets/`: extracción y reconstrucciones automáticas.
+
+Si `reviewed/` no existe, el modelo debe indicar que trabaja con una extracción no aprobada. Los diagramas SVG y Mermaid ayudan a navegar el contenido, pero cualquier conclusión espacial se verifica contra la imagen original.
+
+`reviewed/document.json` contiene `reviewed_markdown_sha256`, procedencia por página, secciones indexadas y `accepted_uncertainties`. El modelo debe conservar esas incertidumbres y citar `page_number` y `source_image`.
+
+Durante la extracción automática, `cuaderno_campo.md` puede incluir una `Interpretación espacial propuesta por el VLM`: es una ayuda visual editable y no es una fuente autorizada. Tras corregirla en `review/transcripcion.md` y publicar, pasa a `pages[*].spatial_interpretation`, que contiene una interpretación espacial revisada por una persona. Es el resumen adecuado para razonar sobre un croquis; aun así, el modelo debe citar su página y consultar la imagen si la pregunta exige un detalle visual que esa interpretación no declara.
+
+Prompt recomendado para este perfil:
+
+```text
+Esta es una sesión cuaderno_campo. Comprueba primero si existe reviewed/.
+Si existe, usa reviewed/notas.md y reviewed/document.json como transcripción autorizada.
+Consulta la imagen indicada por source_image cuando la respuesta dependa de escritura,
+posición, flechas, recuadros o croquis. No uses SVG, Mermaid, OCR bruto ni el JSON raíz
+como evidencia primaria. Conserva accepted_uncertainties, no completes ausencias y cita
+el número de página que respalda cada afirmación. Si reviewed/ no existe, advierte que la
+sesión aún no ha sido aprobada por una persona.
+```
+
 ## Unidad documental
 
 Cada carpeta representa una sesión. `notas.md` contiene los metadatos y declara `datos: "datos.csv"`; esa referencia vincula el contexto cualitativo con los registros tabulares de la misma carpeta. El nombre ISO de la carpeta identifica la fecha solo cuando fue demostrada por la fuente.

@@ -526,6 +526,9 @@ class TestDiagramRenderMarkdown(unittest.TestCase):
             relations=[
                 RelationEntity(id="r1", source_id="n1", target_id="n2", relation_type="flows_to", label="Avanza"),
             ],
+            textual_reconstruction="┌────────┐     ┌─────┐\n│ Inicio │ ──> │ Fin │\n└────────┘     └─────┘",
+            spatial_summary="La caja Inicio se conecta mediante una flecha con la caja Fin.",
+            reconstruction_uncertainties=["No se distingue una etiqueta secundaria."],
         )
 
         md = render_markdown(fc)
@@ -533,6 +536,10 @@ class TestDiagramRenderMarkdown(unittest.TestCase):
         self.assertIn("```mermaid", md)
         self.assertIn("flowchart TD", md)
         self.assertIn("#### Descripción textual", md)
+        self.assertIn("#### Interpretación espacial propuesta por el VLM", md)
+        self.assertIn("```text", md)
+        self.assertIn("La caja Inicio se conecta", md)
+        self.assertIn("No se distingue una etiqueta secundaria", md)
         self.assertIn("- **Tipo de diagrama:** Diagrama de flujo (`flowchart`)", md)
         self.assertIn("- **Página fuente:** 1", md)
         self.assertIn("`n1` -> `n2`", md)

@@ -86,7 +86,15 @@ output_ocr/<documento>/
 ├── pages/
 ├── raw/
 ├── assets/
-└── review/issues.json
+├── review/
+│   ├── issues.json
+│   ├── transcripcion.md
+│   ├── resolutions.json
+│   └── revision.json
+└── reviewed/          # aparece después de publicar la revisión
+    ├── notas.md
+    ├── document.json
+    └── README.md
 ```
 
 Reglas del resultado:
@@ -94,12 +102,27 @@ Reglas del resultado:
 1. Conserva las páginas y el orden secuencial.
 2. No muestra las tablas canónicas de estadillo.
 3. Extrae texto y figuras mediante pasadas VLM separadas.
-4. Digitaliza flujos como Mermaid y croquis como SVG.
+4. Digitaliza flujos como Mermaid y croquis como SVG, y genera una reconstrucción espacial textual propuesta por el VLM.
 5. Inserta después la imagen original de la página.
 6. Elimina referencias geométricas rotas con una advertencia; no inventa entidades.
 7. Evita repetir contenido idéntico devuelto como resumen y párrafo.
 
 El Markdown enlaza recursos relativos. Mantén juntos el archivo, `pages/` y `assets/`.
+
+### Publicar la revisión humana
+
+1. Corrige `review/transcripcion.md` contrastando cada bloque con `pages/page_NNN.*`.
+   Cada croquis detectado incluye un bloque `#### Interpretación espacial propuesta por el VLM`, con un diagrama monoespaciado y un resumen de relaciones visibles. Corrige tanto el diagrama como el resumen; puedes renombrar el encabezado a `#### Interpretación espacial revisada`. Al publicar, ese bloque pasa a `pages[*].spatial_interpretation` para los modelos.
+2. Para cada entrada de `review/resolutions.json`, cambia `pending` por `resolved` o `accepted_uncertain` y añade una nota. `accepted_uncertain` conserva explícitamente la duda.
+3. Publica la revisión:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\publish_cuaderno_review.py output_ocr\<documento> --reviewer "nombre-o-identificador"
+```
+
+El comando rechaza páginas omitidas o reordenadas, enlaces de evidencia ausentes e incidencias pendientes. Publica atómicamente `reviewed/notas.md`, `reviewed/document.json` y una guía breve para modelos. No modifica la predicción automática original.
+
+Si se vuelve a ejecutar el perfil sobre el mismo nombre de sesión, la revisión anterior se conserva en `review/history/<huella>/`. Es historial no vigente: la nueva extracción debe revisarse y publicarse otra vez antes de que un modelo la trate como aprobada.
 
 ## 6. Revisión de cuaderno_campo
 

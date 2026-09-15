@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from src.fieldnotes.artifacts import PageArtifact
 from src.fieldnotes.profiles.notebook import (
     CuadernoCampoProfile,
+    DiagramTextDTO,
     VisualInventoryDTO,
     VisualItemDTO,
 )
@@ -39,18 +40,27 @@ class TestCuadernoCampoProfile(unittest.TestCase):
                     PointEntityDTO(id="p2", coordinate=Point2DDTO(x=0.8, y=0.8), label="Fin"),
                 ],
             )
-            agent.ask_page_vision_structured.side_effect = [page, inventory, diagram, diagram]
+            reconstruction = DiagramTextDTO(
+                textual_reconstruction="[Inicio] --> [Fin]",
+                spatial_summary="Inicio conecta mediante una flecha con Fin.",
+            )
+            agent.ask_page_vision_structured.side_effect = [page, inventory, diagram, diagram, reconstruction]
 
             markdown, document = CuadernoCampoProfile(agent, base).run(image)
 
-            self.assertEqual(agent.ask_page_vision_structured.call_count, 4)
+            self.assertEqual(agent.ask_page_vision_structured.call_count, 5)
             self.assertEqual(len(document.diagrams), 1)
             self.assertIn("```mermaid", markdown)
+            self.assertIn("#### Interpretación espacial propuesta por el VLM", markdown)
+            self.assertIn("[Inicio] --> [Fin]", markdown)
             self.assertIn("### Imagen original de la página", markdown)
             self.assertIn("pages/page_001.png", markdown)
             self.assertNotIn("|id|col|fil|especie", markdown)
             self.assertNotIn("| Objetivo | Fecha | Asistentes |", markdown)
             self.assertTrue((base / "pagina" / "cuaderno_campo.md").is_file())
+            self.assertTrue((base / "pagina" / "review" / "transcripcion.md").is_file())
+            manifest = (base / "pagina" / "review" / "revision.json").read_text(encoding="utf-8")
+            self.assertIn('"status": "pending"', manifest)
 
 
 if __name__ == "__main__":

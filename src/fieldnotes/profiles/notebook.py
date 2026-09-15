@@ -16,7 +16,7 @@ from ..schemas.notebook import (
     GenericTableDTO,
     dto_to_notebook_page,
 )
-from ..schemas.diagram import DiagramDTO, dto_to_diagram_ir
+from ..schemas.diagram import DiagramDTO, DiagramTextDTO, dto_to_diagram_ir
 from ..schemas.dto import EstadilloHeaderDTO, VisualRegion1000DTO
 from ..schemas.review import review_issues_to_json, ReviewIssue
 from ..review.issues import (
@@ -118,6 +118,19 @@ REGLAS ESTRICTAS DE EXCLUSIÓN:
 - No confundas una tabla ni bloques de texto con una figura.
 - No inventes elementos. Si no hay diagramas o croquis reales inequívocos, devuelve items=[].
 Clasifica cada elemento válido como field_sketch, flowchart o gps_sketch y descríbelo brevemente."""
+
+
+DIAGRAM_TEXT_RECONSTRUCTION_PROMPT = """Genera una propuesta de reconstrucción visual EN TEXTO para el diagrama objetivo de esta página.
+La propuesta será revisada y corregida por una persona antes de publicarse.
+
+REGLAS DE FIDELIDAD:
+- Describe solo formas, etiquetas, líneas, flechas y relaciones que sean visualmente observables en el diagrama.
+- No inventes orientación geográfica, coordenadas, distancias, jerarquías ni conexiones.
+- Usa un diagrama ASCII/Unicode monoespaciado conciso en textual_reconstruction (cajas, flechas y líneas cuando ayuden a conservar la disposición).
+- En spatial_summary, explica en una o dos frases únicamente las relaciones espaciales visibles.
+- Si una etiqueta, línea o relación no se lee o no se distingue con seguridad, declárala en uncertainties y marca uncertain=true.
+- No incluyas Markdown, bloques de código, SVG, Mermaid, HTML ni texto introductorio: devuelve exclusivamente el objeto DiagramTextDTO.
+"""
 
 
 def build_notebook_page_prompt(
@@ -441,6 +454,11 @@ class NotebookProfile:
             write_atomic_file(notebook_path, markdown_output)
             write_atomic_file(document_json_path, validated_doc.model_dump_json(indent=2))
             write_atomic_file(issues_json_path, review_issues_to_json(review_issues))
+            if isinstance(self, CuadernoCampoProfile):
+                from ..review.cuaderno_campo import create_review_draft, archive_previous_review
+                create_review_draft(markdown_output, staging_review_dir)
+                if canonical_dir.exists():
+                    archive_previous_review(canonical_dir, staging_review_dir)
 
             # 9. Publicación atómica de staging a canonical_dir con respaldo y rollback seguro
             if progress:
@@ -577,6 +595,20 @@ class CuadernoCampoProfile(NotebookProfile):
                     )
                     dto_to_diagram_ir(retry, source_page=art.page_number)
                     diagram = retry
+            text_prompt = DIAGRAM_TEXT_RECONSTRUCTION_PROMPT + (
+                f"\nELEMENTO OBJETIVO {index + 1}: {item.description}. "
+                "Reconstruye solo este elemento, sin incorporar texto o marcas ajenas."
+            )
+            reconstruction = self.agent.ask_page_vision_structured(
+                page_artifact=art, prompt=text_prompt, schema=DiagramTextDTO,
+                max_tokens=min(max_tokens, 2048), **call_kwargs,
+            )
+            diagram = diagram.model_copy(update={
+                "textual_reconstruction": reconstruction.textual_reconstruction,
+                "spatial_summary": reconstruction.spatial_summary,
+                "reconstruction_uncertainties": list(reconstruction.uncertainties),
+                "uncertain": diagram.uncertain or reconstruction.uncertain,
+            })
             diagrams.append(diagram)
         return page_dto.model_copy(update={"estadillo_rows": [], "diagrams": diagrams})
 

@@ -51,3 +51,11 @@ __all__ = [
     "generate_review_crops_for_issues",
     "validate_safe_crop_path",
 ]
+from .cuaderno_campo import (
+    ReviewedCuadernoDocument,
+    create_review_draft,
+    archive_previous_review,
+    publish_cuaderno_review,
+)
+
+__all__.extend(["ReviewedCuadernoDocument", "create_review_draft", "archive_previous_review", "publish_cuaderno_review"])

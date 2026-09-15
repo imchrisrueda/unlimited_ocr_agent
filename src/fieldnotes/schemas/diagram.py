@@ -314,6 +314,18 @@ class DiagramIR(BaseModel):
     labels: list[LabelEntity] = Field(default_factory=list, description="Etiquetas y textos legibles en el dibujo")
     relations: list[RelationEntity] = Field(default_factory=list, description="Relaciones explícitas de conectividad o adyacencia")
     raw_text: Optional[str] = Field(default=None, description="Transcripción del texto asociado al diagrama")
+    textual_reconstruction: Optional[str] = Field(
+        default=None,
+        description="Reconstrucción visual textual propuesta por el VLM; requiere revisión humana antes de ser autorizada.",
+    )
+    spatial_summary: Optional[str] = Field(
+        default=None,
+        description="Resumen espacial propuesto por el VLM, limitado a relaciones visuales observables.",
+    )
+    reconstruction_uncertainties: list[str] = Field(
+        default_factory=list,
+        description="Dudas declaradas por el VLM para su reconstrucción textual.",
+    )
     warnings: list[ExtractionWarning] = Field(default_factory=list, description="Advertencias o incidencias detectadas")
     uncertain: bool = Field(default=False, description="Marca de incertidumbre general en la extracción del diagrama")
 
@@ -565,9 +577,22 @@ class DiagramDTO(BaseModel):
     labels: list[LabelEntityDTO] = Field(default_factory=list)
     relations: list[RelationEntityDTO] = Field(default_factory=list)
     raw_text: Optional[str] = None
+    textual_reconstruction: Optional[str] = None
+    spatial_summary: Optional[str] = None
+    reconstruction_uncertainties: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     uncertain: bool = False
 
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class DiagramTextDTO(BaseModel):
+    """Propuesta visual textual generada para revisión humana, separada de la geometría."""
+
+    textual_reconstruction: str = Field(..., min_length=1, max_length=6000)
+    spatial_summary: str = Field(..., min_length=1, max_length=2000)
+    uncertain: bool = False
+    uncertainties: list[str] = Field(default_factory=list)
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
@@ -804,6 +829,9 @@ def dto_to_diagram_ir(
         labels=canonical_labels,
         relations=canonical_relations,
         raw_text=dto.raw_text,
+        textual_reconstruction=dto.textual_reconstruction,
+        spatial_summary=dto.spatial_summary,
+        reconstruction_uncertainties=list(dto.reconstruction_uncertainties),
         warnings=canonical_warnings,
         uncertain=dto.uncertain,
     )

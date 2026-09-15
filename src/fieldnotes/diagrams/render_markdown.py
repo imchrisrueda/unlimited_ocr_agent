@@ -66,6 +66,15 @@ def sanitize_alt_text(text: Optional[str]) -> str:
     return s.strip()
 
 
+def sanitize_text_reconstruction(text: Optional[str]) -> str:
+    """Conserva el diseño monoespaciado y evita que cierre o inyecte Markdown."""
+    if text is None:
+        return ""
+    value = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    value = _CONTROL_CHARS_RE.sub("", value).replace("```", "'''")
+    return "\n".join(line.rstrip() for line in value.split("\n")).strip()
+
+
 def validate_and_sanitize_asset_path(asset_path: Optional[str], default_path: str) -> str:
     """Valida que una ruta de asset sea una ruta relativa POSIX confinada y segura.
 
@@ -185,6 +194,24 @@ def render_markdown(
             lines.append("")
 
     # 3. Descripción textual estructurada para accesibilidad
+    if diagram.textual_reconstruction:
+        lines.append("#### Interpretación espacial propuesta por el VLM")
+        lines.append("")
+        lines.append("> Propuesta automática: corrígela frente a la imagen original antes de publicar la revisión humana.")
+        lines.append("")
+        lines.append("```text")
+        lines.append(sanitize_text_reconstruction(diagram.textual_reconstruction))
+        lines.append("```")
+        lines.append("")
+        if diagram.spatial_summary:
+            lines.append(f"**Resumen espacial propuesto:** {sanitize_markdown_text(diagram.spatial_summary)}")
+            lines.append("")
+        if diagram.reconstruction_uncertainties:
+            lines.append("**Dudas declaradas por el VLM:**")
+            for uncertainty in diagram.reconstruction_uncertainties:
+                lines.append(f"- {sanitize_markdown_text(uncertainty)}")
+            lines.append("")
+
     lines.append("#### Descripción textual")
     lines.append("")
 

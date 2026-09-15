@@ -26,6 +26,8 @@ class TestSequentialOCR(unittest.TestCase):
             result = ocr.extract_from_images(["page1.png", "page2.png"])
             self.assertEqual(result, "<PAGE>línea\r\n\r\n<PAGE>  final sin salto")
             self.assertEqual((Path(directory) / "result.md").read_bytes(), result.encode("utf-8"))
+            for call in ocr.model.infer.call_args_list:
+                self.assertEqual(call.kwargs["max_length"], 32768)
 
 
 class TestOCRSplitter(unittest.TestCase):

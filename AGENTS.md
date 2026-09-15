@@ -121,3 +121,25 @@ Cualquier valor o código no contemplado se preserva en su forma textual origina
 
 - Todo dato debe ser trazable a la imagen fuente (`pages/page_XXX.png`).
 - Las incertidumbres visuales se declaran en artefactos de auditoría (`uncertain_fields`, `review/issues.json`), manteniendo los entregables canónicos (`notas.md` y `datos.csv`) limpios, precisos y estandarizados.
+
+---
+
+## 9. Cuadernos de Campo Revisados y Consumo por Modelos
+
+Para sesiones generadas con `--profile cuaderno_campo` existen dos niveles de autoridad:
+
+1. `cuaderno_campo.md` y `document.json` en la raíz son extracción automática. Sirven para revisión, pero no constituyen texto aprobado.
+2. `reviewed/notas.md` y `reviewed/document.json` existen únicamente tras ejecutar `scripts/publish_cuaderno_review.py`; constituyen la transcripción humana aprobada y sincronizada.
+
+Al responder preguntas sobre una sesión de `cuaderno_campo`:
+
+- Preferir siempre `reviewed/notas.md` y `reviewed/document.json` cuando existan.
+- Usar `reviewed/document.json.pages[*].source_image` para localizar la página original que respalda cada contenido.
+- Consultar `pages/page_NNN.*` cuando la pregunta dependa de escritura, posición, flechas, recuadros o croquis.
+- Tratar `cuaderno_campo.md`, el `document.json` raíz, `raw/` y `assets/` como derivados automáticos, nunca como sustitutos de una revisión publicada.
+- Si no existe `reviewed/`, declarar que la sesión no está aprobada antes de resumir o extraer conclusiones.
+- Preservar `accepted_uncertainties`; no elegir una lectura candidata ni completar una ausencia por contexto.
+- No interpretar un SVG o Mermaid reconstruido como evidencia primaria. La página original es la evidencia visual.
+- La `Interpretación espacial propuesta por el VLM` del Markdown automático es un borrador revisable: puede contener diagrama monoespaciado y resumen, pero no debe tratarse como evidencia autorizada.
+- Usar `pages[*].spatial_interpretation` solo después de publicar la revisión: es la interpretación espacial revisada por una persona y debe conservarse literalmente, junto a su página fuente.
+- Citar el número de página y el archivo fuente en afirmaciones documentales.
